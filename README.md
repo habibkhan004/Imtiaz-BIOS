@@ -1,4 +1,4 @@
-# IMTIAZ BIOS
+# IMTIAZ BIOS Services
 
 A modern BIOS, motherboard repair, BIOS file library, schematic/boardview, and password-unlock platform built with **Next.js** and **PostgreSQL**.
 
