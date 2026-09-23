@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const PIN_COORDS = [
@@ -43,11 +44,6 @@ export function Hero() {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    console.log("🚀 IMTIAZ BIOS — Advanced BIOS & Motherboard Repair");
-    console.log("💬 Telegram: https://t.me/IMTIAZBIOS1");
-  }, []);
-
   return (
     <section className="hero">
       <div className="wrap hero-grid">
@@ -60,17 +56,16 @@ export function Hero() {
             <span className="accent-gold">Every time.</span>
           </h1>
           <p className="lead">
-            Professional BIOS repair, motherboard rework, schematics, boardviews,
-            and password unlocking for all laptop brands. Upload and request tested
-            files instantly.
+            Professional BIOS files, schematics, boardviews, and password unlocking
+            for all laptop brands. Browse the library or open a request instantly.
           </p>
           <div className="hero-actions">
-            <a href="#services" className="btn btn-primary">
-              🔧 Repair Services
-            </a>
-            <a href="#library" className="btn btn-purple">
-              📤 Upload BIOS
-            </a>
+            <Link href="/library" className="btn btn-primary">
+              📚 File Library
+            </Link>
+            <Link href="/services" className="btn btn-purple">
+              🔧 Services
+            </Link>
             <a
               href="https://t.me/IMTIAZBIOS1"
               target="_blank"
