@@ -1,10 +1,70 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { clearAuth, readAuth, type AuthSession } from "../lib/auth";
+import { LogoutIcon, TopbarUserCluster } from "./TopbarUserCluster";
+
+const NAV = [
+  { href: "/", label: "Home" },
+  { href: "/services", label: "Services" },
+  { href: "/library", label: "Library" },
+  { href: "/categories", label: "Categories" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/contact", label: "Contact" },
+  { href: "/testimonials", label: "Testimonials" },
+] as const;
+
+function isActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function roleLinks(user: AuthSession) {
+  if (user.role === "admin") {
+    return {
+      consoleHref: "/admin",
+      consoleLabel: "Admin",
+      profileHref: "/admin/settings",
+      notificationsHref: "/admin/audit",
+      settingsHref: "/admin/settings",
+    };
+  }
+  if (user.role === "technician") {
+    return {
+      consoleHref: "/tech",
+      consoleLabel: "Tech console",
+      profileHref: "/tech",
+      notificationsHref: "/tech",
+      settingsHref: "/tech?type=upload",
+    };
+  }
+  return {
+    consoleHref: "/portal",
+    consoleLabel: "Portal",
+    profileHref: "/portal/profile",
+    notificationsHref: "/portal/notifications",
+    settingsHref: "/portal/subscription",
+  };
+}
 
 export function Header() {
   const [navOpen, setNavOpen] = useState(false);
+  const [user, setUser] = useState<AuthSession | null>(null);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    const sync = () => setUser(readAuth());
+    sync();
+    window.addEventListener("imtiaz-auth-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("imtiaz-auth-change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -14,12 +74,23 @@ export function Header() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
+
   const closeNav = () => setNavOpen(false);
+  const links = user ? roleLinks(user) : null;
+
+  const onLogout = () => {
+    clearAuth();
+    setUser(null);
+    router.push("/");
+  };
 
   return (
     <header>
-      <nav>
-        <Link href="/" className="logo" onClick={closeNav}>
+      <nav className="site-nav">
+        <Link href="/" className="logo nav-brand" onClick={closeNav}>
           <svg className="logo-mark" viewBox="0 0 34 34" fill="none">
             <rect
               x="8"
@@ -50,24 +121,25 @@ export function Header() {
         </Link>
 
         <div className={`nav-links${navOpen ? " open" : ""}`} id="navLinks">
-          <Link href="/#services" onClick={closeNav}>
-            Services
-          </Link>
-          <Link href="/#library" onClick={closeNav}>
-            Library
-          </Link>
-          <Link href="/#unlock" onClick={closeNav}>
-            Unlock
-          </Link>
-          <Link href="/#why" onClick={closeNav}>
-            Why Us
-          </Link>
-          <Link href="/#faq" onClick={closeNav}>
-            FAQ
-          </Link>
-          <Link href="/#contact" onClick={closeNav}>
-            Contact
-          </Link>
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={closeNav}
+              style={
+                isActive(pathname, item.href)
+                  ? { color: "var(--accent-cyan)" }
+                  : undefined
+              }
+            >
+              {item.label}
+            </Link>
+          ))}
+          {links ? (
+            <Link href={links.consoleHref} onClick={closeNav}>
+              {links.consoleLabel}
+            </Link>
+          ) : null}
           <a
             href="https://t.me/IMTIAZBIOS1"
             target="_blank"
@@ -80,12 +152,30 @@ export function Header() {
         </div>
 
         <div className="nav-cta">
-          <Link href="/#library" className="btn btn-outline btn-sm">
-            Browse
-          </Link>
-          <Link href="/#upload-tab" className="btn btn-primary btn-sm">
-            Upload
-          </Link>
+          {user && links ? (
+            <>
+              <TopbarUserCluster
+                name={user.name}
+                profileHref={links.profileHref}
+                notificationsHref={links.notificationsHref}
+                settingsHref={links.settingsHref}
+                showLogout={false}
+              />
+              <button type="button" className="logout-btn site-header-logout" onClick={onLogout}>
+                <LogoutIcon />
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/library" className="btn btn-outline btn-sm" onClick={closeNav}>
+                Browse
+              </Link>
+              <Link href="/login" className="btn btn-primary btn-sm" onClick={closeNav}>
+                Login
+              </Link>
+            </>
+          )}
           <button
             className="nav-toggle"
             id="navToggle"

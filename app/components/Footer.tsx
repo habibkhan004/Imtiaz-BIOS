@@ -8,11 +8,14 @@ export function Footer() {
           <span className="logo-text">IMTIAZ BIOS</span>
         </span>
         <div className="footer-links">
-          <Link href="/#services">Services</Link>
-          <Link href="/#library">Library</Link>
-          <Link href="/#unlock">Unlock</Link>
-          <Link href="/#faq">FAQ</Link>
-          <Link href="/#contact">Contact</Link>
+          <Link href="/">Home</Link>
+          <Link href="/services">Services</Link>
+          <Link href="/library">Library</Link>
+          <Link href="/categories">Categories</Link>
+          <Link href="/faq">FAQ</Link>
+          <Link href="/contact">Contact</Link>
+          <Link href="/testimonials">Testimonials</Link>
+          <Link href="/login">Login</Link>
           <a
             href="https://t.me/IMTIAZBIOS1"
             target="_blank"
