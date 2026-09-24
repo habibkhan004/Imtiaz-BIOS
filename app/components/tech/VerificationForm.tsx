@@ -2,56 +2,77 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
-import {
-  loadVerificationItem,
-  saveVerificationResult,
-  TECH_CHANGE_EVENT,
-  type VerificationItem,
-} from "../../lib/tech-data";
+import { useState, type FormEvent } from "react";
 
-export function VerificationForm({ item: seed }: { item: VerificationItem }) {
+type LiveUpload = {
+  id: string;
+  originalName: string;
+  status: string;
+};
+
+export function VerificationForm({
+  upload,
+  onDone,
+}: {
+  upload: LiveUpload;
+  onDone?: () => void;
+}) {
   const router = useRouter();
-  const [item, setItem] = useState(seed);
   const [chipGuess, setChipGuess] = useState("");
   const [sizeOk, setSizeOk] = useState<"yes" | "no" | "">("");
   const [revMatched, setRevMatched] = useState<"yes" | "no" | "">("");
-  const [publish, setPublish] = useState<"yes" | "no">("no");
+  const [publish, setPublish] = useState(true);
   const [note, setNote] = useState("");
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    const sync = () => {
-      const live = loadVerificationItem(seed.id) ?? loadVerificationItem(seed.requestId);
-      if (live) setItem(live);
-    };
-    sync();
-    window.addEventListener(TECH_CHANGE_EVENT, sync);
-    return () => window.removeEventListener(TECH_CHANGE_EVENT, sync);
-  }, [seed.id, seed.requestId]);
-
-  const save = (result: "Verified" | "Needs changes" | "Rejected") => {
-    if ((result === "Needs changes" || result === "Rejected") && !note.trim()) {
+  const save = async (status: "approved" | "needs_info" | "rejected") => {
+    if ((status === "needs_info" || status === "rejected") && !note.trim()) {
       setError("Add a note/reason for the customer.");
       return;
     }
     setError("");
-    saveVerificationResult(item.requestId, result, {
-      chipGuess,
-      sizeOk,
-      revMatched,
-      publish,
-      note,
-    });
-    setToast(
-      result === "Verified"
-        ? "✅ Marked verified"
-        : result === "Needs changes"
-          ? "⚠️ Marked needs changes"
-          : "❌ Rejected",
-    );
-    setTimeout(() => router.push("/tech?type=upload"), 900);
+    setPending(true);
+    try {
+      const reviewNote = [
+        note.trim(),
+        chipGuess ? `chip=${chipGuess}` : "",
+        sizeOk ? `sizeOk=${sizeOk}` : "",
+        revMatched ? `revMatched=${revMatched}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      const res = await fetch(`/api/uploads/${upload.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          reviewNote,
+          publish: status === "approved" ? publish : false,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Review failed");
+        return;
+      }
+      setToast(
+        status === "approved"
+          ? "✅ Approved"
+          : status === "needs_info"
+            ? "⚠️ Needs info"
+            : "❌ Rejected",
+      );
+      onDone?.();
+      setTimeout(() => router.push("/tech?type=upload"), 900);
+    } catch {
+      setError("Network error");
+    } finally {
+      setPending(false);
+    }
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -62,7 +83,7 @@ export function VerificationForm({ item: seed }: { item: VerificationItem }) {
     <form className="portal-panel" onSubmit={onSubmit} noValidate>
       <h2>Verification actions</h2>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
-        Current status: <strong>{item.status}</strong>
+        Current status: <strong>{upload.status}</strong>
       </p>
       <div className="field">
         <label htmlFor="chipGuess">Chip part guess</label>
@@ -78,81 +99,80 @@ export function VerificationForm({ item: seed }: { item: VerificationItem }) {
         <select
           id="sizeOk"
           value={sizeOk}
-          onChange={(e) => setSizeOk(e.target.value as typeof sizeOk)}
+          onChange={(e) => setSizeOk(e.target.value as "yes" | "no" | "")}
         >
-          <option value="">Select…</option>
+          <option value="">—</option>
           <option value="yes">Yes</option>
           <option value="no">No</option>
         </select>
       </div>
       <div className="field">
-        <label htmlFor="revMatched">Board revision matched?</label>
+        <label htmlFor="revMatched">Board rev matched?</label>
         <select
           id="revMatched"
           value={revMatched}
-          onChange={(e) => setRevMatched(e.target.value as typeof revMatched)}
+          onChange={(e) => setRevMatched(e.target.value as "yes" | "no" | "")}
         >
-          <option value="">Select…</option>
+          <option value="">—</option>
           <option value="yes">Yes</option>
           <option value="no">No</option>
         </select>
       </div>
+      <label style={{ display: "flex", gap: 8, marginBottom: 14, fontSize: 14 }}>
+        <input
+          type="checkbox"
+          checked={publish}
+          onChange={(e) => setPublish(e.target.checked)}
+        />
+        Publish to library on approve
+      </label>
       <div className="field">
-        <label htmlFor="publish">Publish to public library?</label>
-        <select
-          id="publish"
-          value={publish}
-          onChange={(e) => setPublish(e.target.value as "yes" | "no")}
-        >
-          <option value="no">No</option>
-          <option value="yes">Yes</option>
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="vnote">Tech note / customer reason</label>
+        <label htmlFor="note">Customer-facing note</label>
         <textarea
-          id="vnote"
+          id="note"
           rows={3}
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Required for Needs changes / Reject"
+          placeholder="Required for needs info / reject"
         />
       </div>
       {error ? (
-        <div className="toast show error" style={{ marginBottom: 12 }}>
-          {error}
-        </div>
+        <p style={{ color: "var(--danger)", fontSize: 13, marginBottom: 12 }}>{error}</p>
       ) : null}
-      <div className="action-btns">
+      {toast ? (
+        <p style={{ color: "var(--accent-cyan)", fontSize: 13, marginBottom: 12 }}>
+          {toast}
+        </p>
+      ) : null}
+      <div className="action-btns" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <button
           type="button"
           className="btn btn-success btn-sm"
-          onClick={() => save("Verified")}
+          disabled={pending}
+          onClick={() => save("approved")}
         >
-          Verify (pass)
+          Approve
         </button>
         <button
           type="button"
           className="btn btn-gold btn-sm"
-          onClick={() => save("Needs changes")}
+          disabled={pending}
+          onClick={() => save("needs_info")}
         >
-          Needs changes
+          Needs info
         </button>
         <button
           type="button"
           className="btn btn-danger btn-sm"
-          onClick={() => save("Rejected")}
+          disabled={pending}
+          onClick={() => save("rejected")}
         >
           Reject
         </button>
-        <Link href={`/tech/notes/${item.requestId}`} className="btn btn-purple btn-sm">
-          Technical notes
-        </Link>
         <Link href="/tech?type=upload" className="btn btn-outline btn-sm">
-          Queue
+          Back
         </Link>
       </div>
-      <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
     </form>
   );
 }

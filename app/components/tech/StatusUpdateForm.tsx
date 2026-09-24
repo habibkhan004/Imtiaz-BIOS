@@ -1,86 +1,221 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
-import {
-  allowedStatuses,
-  appendSystemMessage,
-  loadAssignedRequest,
-  patchAssignedRequest,
-  TECH_CHANGE_EVENT,
-  type TechAssignedRequest,
-  type TechStatus,
-} from "../../lib/tech-data";
-import { StatusBadge } from "./ui";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { StatusBadge, TechPageHeader } from "./ui";
 
-export function StatusUpdateForm({ item: seed }: { item: TechAssignedRequest }) {
-  const [item, setItem] = useState(seed);
-  const [status, setStatus] = useState<TechStatus>(seed.status);
+type LiveItem = {
+  kind: "request" | "ticket" | "upload";
+  id: string;
+  displayId: string;
+  type: "file_request" | "support" | "upload";
+  model: string;
+  brand: string;
+  status: string;
+  description: string;
+};
+
+const REQUEST_STATUSES = [
+  "pending",
+  "assigned",
+  "in_progress",
+  "needs_info",
+  "completed",
+  "closed",
+  "rejected",
+];
+const TICKET_STATUSES = [
+  "pending",
+  "open",
+  "assigned",
+  "in_progress",
+  "waiting_customer",
+  "resolved",
+  "closed",
+];
+const UPLOAD_STATUSES = ["pending", "approved", "needs_info", "rejected"];
+
+function statusesFor(type: LiveItem["type"]) {
+  if (type === "file_request") return REQUEST_STATUSES;
+  if (type === "support") return TICKET_STATUSES;
+  return UPLOAD_STATUSES;
+}
+
+export function StatusUpdateForm() {
+  const params = useParams<{ id: string }>();
+  const id = params.id;
+  const [item, setItem] = useState<LiveItem | null>(null);
+  const [status, setStatus] = useState("");
   const [publicReason, setPublicReason] = useState("");
-  const [internalReason, setInternalReason] = useState("");
-  const [notify, setNotify] = useState(true);
-  const [toast, setToast] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const reqRes = await fetch(`/api/requests/${id}`, {
+        credentials: "include",
+      });
+      if (reqRes.ok) {
+        const data = await reqRes.json();
+        if (data.request) {
+          const r = data.request;
+          const live: LiveItem = {
+            kind: "request",
+            id: r.id,
+            displayId: r.requestNumber,
+            type: "file_request",
+            model: r.boardModel,
+            brand: r.brand,
+            status: r.status,
+            description: r.description || "",
+          };
+          setItem(live);
+          setStatus(r.status);
+          return;
+        }
+        if (data.ticket) {
+          const t = data.ticket;
+          const live: LiveItem = {
+            kind: "ticket",
+            id: t.id,
+            displayId: t.ticketNumber,
+            type: "support",
+            model: t.model || t.boardNumber || "—",
+            brand: t.brand || "—",
+            status: t.status,
+            description: t.description || "",
+          };
+          setItem(live);
+          setStatus(t.status);
+          return;
+        }
+      }
+      const upRes = await fetch(`/api/uploads/${id}`, {
+        credentials: "include",
+      });
+      if (upRes.ok) {
+        const data = await upRes.json();
+        const u = data.upload;
+        const live: LiveItem = {
+          kind: "upload",
+          id: u.id,
+          displayId: u.id.slice(0, 8),
+          type: "upload",
+          model: u.boardNumber || u.modelNumber,
+          brand: "—",
+          status: u.status,
+          description: u.notes || "",
+        };
+        setItem(live);
+        setStatus(u.status);
+        return;
+      }
+      setError("Item not found");
+      setItem(null);
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    const sync = () => {
-      const live = loadAssignedRequest(seed.id);
-      if (live) {
-        setItem(live);
-        setStatus(live.status);
-      }
-    };
-    sync();
-    window.addEventListener(TECH_CHANGE_EVENT, sync);
-    return () => window.removeEventListener(TECH_CHANGE_EVENT, sync);
-  }, [seed.id]);
+    load();
+  }, [load]);
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!status) {
+    if (!item || !status) {
       setError("Choose a new status.");
       return;
     }
-    if (!allowedStatuses(item.type).includes(status)) {
-      setError("That status is not allowed for this request type.");
-      return;
-    }
     setError("");
-    const at = new Date().toISOString().slice(0, 16).replace("T", " ");
-    const text = `Status → ${status}${publicReason ? `: ${publicReason}` : ""}${
-      internalReason ? ` (internal: ${internalReason})` : ""
-    }`;
-    const nextTimeline = [...item.timeline, { at, text }];
-    patchAssignedRequest(item.id, {
-      status,
-      updatedAt: at,
-      timeline: nextTimeline,
-    });
-    if (notify) {
-      appendSystemMessage(
-        item.id,
-        publicReason.trim() || `Status updated to ${status}`,
-      );
+    setPending(true);
+    try {
+      if (item.kind === "upload") {
+        const res = await fetch(`/api/uploads/${item.id}`, {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status,
+            reviewNote: publicReason.trim(),
+            publish: status === "approved",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "Save failed");
+          return;
+        }
+      } else {
+        const res = await fetch(`/api/requests/${item.id}`, {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status,
+            message: publicReason.trim() || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "Save failed");
+          return;
+        }
+      }
+      setToast(true);
+      setTimeout(() => setToast(false), 2200);
+      await load();
+    } catch {
+      setError("Network error");
+    } finally {
+      setPending(false);
     }
-    setToast(true);
-    setTimeout(() => setToast(false), 2200);
   };
 
+  if (loading) {
+    return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
+  }
+
+  if (!item) {
+    return (
+      <>
+        <TechPageHeader title="Not found" description={error} />
+        <Link href="/tech" className="btn btn-outline btn-sm">
+          Back to queue
+        </Link>
+      </>
+    );
+  }
+
   return (
-    <div className="portal-grid-2">
+    <>
+      <TechPageHeader
+        title={`Status · ${item.displayId}`}
+        description="Change status and optionally notify the customer."
+      />
+      <div className="portal-panel" style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 14 }}>
+          {item.model} · {item.brand} · <StatusBadge status={item.status} />
+        </p>
+        <p style={{ fontSize: 14, marginTop: 8 }}>{item.description || "—"}</p>
+      </div>
       <form className="portal-panel" onSubmit={onSubmit} noValidate>
         <h2>Update status</h2>
-        <p style={{ marginBottom: 14, fontSize: 14 }}>
-          Current: <StatusBadge status={item.status} />
-        </p>
         <div className="field">
           <label htmlFor="newStatus">New status *</label>
           <select
             id="newStatus"
             value={status}
-            onChange={(e) => setStatus(e.target.value as TechStatus)}
+            onChange={(e) => setStatus(e.target.value)}
           >
-            {allowedStatuses(item.type).map((s) => (
+            {statusesFor(item.type).map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -97,70 +232,26 @@ export function StatusUpdateForm({ item: seed }: { item: TechAssignedRequest }) 
             placeholder="Optional message customer will see"
           />
         </div>
-        <div className="field">
-          <label htmlFor="internalReason">Internal reason</label>
-          <textarea
-            id="internalReason"
-            rows={2}
-            value={internalReason}
-            onChange={(e) => setInternalReason(e.target.value)}
-            placeholder="Optional, technicians only"
-          />
-        </div>
-        <label
-          style={{
-            display: "flex",
-            gap: 8,
-            fontSize: 14,
-            marginBottom: 16,
-            color: "var(--text-secondary)",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={notify}
-            onChange={(e) => setNotify(e.target.checked)}
-          />
-          Also notify customer (adds a system message stub)
-        </label>
         {error ? (
           <div className="toast show error" style={{ marginBottom: 12 }}>
             {error}
           </div>
         ) : null}
         <div className="action-btns">
-          <button type="submit" className="btn btn-success btn-sm">
+          <button type="submit" className="btn btn-success btn-sm" disabled={pending}>
             Save status
           </button>
-          <Link href={`/tech/messages/${item.id}`} className="btn btn-primary btn-sm">
-            Open messages
-          </Link>
+          {item.type === "support" ? (
+            <Link href={`/tech/messages/${item.id}`} className="btn btn-primary btn-sm">
+              Open messages
+            </Link>
+          ) : null}
           <Link href="/tech" className="btn btn-outline btn-sm">
             Queue
           </Link>
         </div>
         <div className={`toast${toast ? " show" : ""}`}>✅ Status updated</div>
       </form>
-
-      <div className="portal-panel">
-        <h2>Status history</h2>
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
-          {item.timeline.map((t, i) => (
-            <li
-              key={`${t.at}-${i}`}
-              style={{
-                borderLeft: "2px solid var(--accent-cyan)",
-                paddingLeft: 12,
-              }}
-            >
-              <div style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
-                {t.at}
-              </div>
-              <div style={{ fontSize: 14 }}>{t.text}</div>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+    </>
   );
 }

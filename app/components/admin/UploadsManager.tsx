@@ -1,20 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import {
-  ADMIN_FILES,
-  ADMIN_PROFILE,
-  ADMIN_UPLOADS,
-  FILES_KEY,
-  UPLOADS_KEY,
-  appendAudit,
-  loadJson,
-  saveJson,
-  type AdminFile,
-  type AdminUpload,
-  type UploadReviewStatus,
-} from "../../lib/admin-data";
+import { useCallback, useEffect, useState } from "react";
 import {
   AdminPageHeader,
   AdminPanel,
@@ -24,118 +11,118 @@ import {
   Toast,
 } from "./ui";
 
+type ApiUpload = {
+  id: string;
+  originalName: string;
+  boardNumber: string;
+  modelNumber: string;
+  brandName?: string;
+  fileType: string;
+  sizeBytes: number;
+  status: string;
+  notes: string;
+  reviewNote?: string;
+  uploaderName?: string;
+  uploaderEmail?: string;
+  createdAt: string;
+  mimeType?: string;
+  storageKey?: string;
+};
+
+function formatSize(bytes: number) {
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
 export function UploadsManager({ detailId }: { detailId?: string }) {
-  const [rows, setRows] = useState<AdminUpload[]>(ADMIN_UPLOADS);
+  const [rows, setRows] = useState<ApiUpload[]>([]);
   const [toast, setToast] = useState("");
   const [reason, setReason] = useState("");
   const [publish, setPublish] = useState(true);
-
-  useEffect(() => {
-    setRows(loadJson(UPLOADS_KEY, ADMIN_UPLOADS));
-  }, []);
-
-  const persist = (next: AdminUpload[]) => {
-    setRows(next);
-    saveJson(UPLOADS_KEY, next);
-  };
-
-  const detail = detailId ? rows.find((r) => r.id === detailId) : null;
-  const list = useMemo(
-    () =>
-      rows.filter((r) =>
-        detailId ? true : r.status === "Queued" || r.status === "Needs changes" || true,
-      ),
-    [rows, detailId],
-  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
 
   const flash = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(""), 2200);
+    setTimeout(() => setToast(""), 2500);
   };
 
-  const setStatus = (id: string, status: UploadReviewStatus, detailText: string) => {
-    if ((status === "Needs changes" || status === "Rejected") && !reason.trim()) {
-      flash("Reason required for needs changes / reject");
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/uploads?limit=100", {
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to load uploads");
+        return;
+      }
+      setRows(data.items || []);
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const detail = detailId ? rows.find((r) => r.id === detailId) : null;
+
+  const review = async (
+    id: string,
+    status: "approved" | "rejected" | "needs_info",
+  ) => {
+    if ((status === "needs_info" || status === "rejected") && !reason.trim()) {
+      flash("Reason required for needs info / reject");
       return;
     }
-    const upload = rows.find((r) => r.id === id);
-    persist(rows.map((r) => (r.id === id ? { ...r, status, notes: reason || r.notes } : r)));
-
-    let publishedId = "";
-    if (status === "Verified" && publish && upload) {
-      publishedId = publishUpload(upload);
-    }
-
-    appendAudit({
-      actor: ADMIN_PROFILE.name,
-      action:
-        status === "Verified"
-          ? "upload.approve"
-          : status === "Needs changes"
-            ? "upload.needs_changes"
-            : "upload.reject",
-      target: id,
-      detail: `${detailText}${
-        publishedId ? ` · published as ${publishedId}` : publish && status === "Verified" ? " · publish=yes" : ""
-      }`,
-    });
-    flash(
-      status === "Verified"
-        ? publishedId
-          ? `✅ Approved & published (${publishedId})`
-          : "✅ Approved"
-        : status === "Needs changes"
-          ? "⚠️ Needs changes"
-          : "❌ Rejected",
-    );
-    setReason("");
-  };
-
-  const publishUpload = (upload: AdminUpload) => {
-    const files = loadJson(FILES_KEY, ADMIN_FILES);
-    const existing = files.find(
-      (f) =>
-        f.model.toLowerCase() === upload.model.toLowerCase() &&
-        f.type === upload.type &&
-        !f.archived,
-    );
-    const today = new Date().toISOString().slice(0, 10);
-    if (existing) {
-      const next = files.map((f) =>
-        f.id === existing.id
-          ? {
-              ...f,
-              verified: true,
-              size: upload.size,
-              brand: upload.brand,
-              description: upload.notes || f.description,
-              updatedAt: today,
-            }
-          : f,
+    setPending(true);
+    try {
+      const res = await fetch(`/api/uploads/${id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          reviewNote: reason.trim(),
+          publish: status === "approved" ? publish : false,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        flash(data.error || "Review failed");
+        return;
+      }
+      flash(
+        status === "approved"
+          ? publish
+            ? "✅ Approved & published to library"
+            : "✅ Approved"
+          : status === "needs_info"
+            ? "⚠️ Needs more info"
+            : "❌ Rejected",
       );
-      saveJson(FILES_KEY, next);
-      return existing.id;
+      setReason("");
+      await load();
+    } catch {
+      flash("Network error");
+    } finally {
+      setPending(false);
     }
-    const file: AdminFile = {
-      id: `file-${Date.now()}`,
-      model: upload.model,
-      brand: upload.brand,
-      type: upload.type,
-      category: "bios-dumps",
-      size: upload.size,
-      verified: true,
-      description: upload.notes || `Published from upload ${upload.filename}`,
-      updatedAt: today,
-    };
-    saveJson(FILES_KEY, [file, ...files]);
-    return file.id;
   };
 
-  if (detailId && !detail) {
+  if (detailId && !loading && !detail) {
     return (
       <EmptyState
         title="Upload not found"
-        body="Unknown upload id."
+        body="This upload is not in the live database (old demo IDs like UP-71 no longer apply)."
         actionHref="/admin/uploads"
         actionLabel="Back to uploads"
       />
@@ -146,8 +133,8 @@ export function UploadsManager({ detailId }: { detailId?: string }) {
     return (
       <>
         <AdminPageHeader
-          title={detail.filename}
-          description={`${detail.model} · ${detail.brand} · uploaded by ${detail.uploadedBy}`}
+          title={detail.originalName}
+          description={`${detail.boardNumber || detail.modelNumber} · ${detail.brandName || "—"} · ${detail.uploaderName}`}
         />
         <div className="portal-grid-2">
           <AdminPanel
@@ -155,30 +142,26 @@ export function UploadsManager({ detailId }: { detailId?: string }) {
             actions={<StatusBadge status={detail.status} />}
           >
             <p style={{ fontSize: 14 }}>
-              Size: <strong>{detail.size}</strong>
+              Size: <strong>{formatSize(detail.sizeBytes)}</strong>
               <br />
-              Type: <strong>{detail.type}</strong>
+              Type: <strong>{detail.fileType}</strong>
               <br />
-              Submitted: <strong>{detail.submittedAt}</strong>
+              MIME: <strong>{detail.mimeType || "—"}</strong>
               <br />
-              Assigned: <strong>{detail.assignedTech ?? "—"}</strong>
+              Submitted:{" "}
+              <strong>{new Date(detail.createdAt).toLocaleString()}</strong>
+              <br />
+              Uploader:{" "}
+              <strong>
+                {detail.uploaderName} ({detail.uploaderEmail})
+              </strong>
             </p>
-            <p style={{ marginTop: 12, fontSize: 14 }}>{detail.notes}</p>
-            <pre
-              style={{
-                marginTop: 16,
-                fontFamily: "var(--mono)",
-                fontSize: 12,
-                color: "var(--accent-cyan)",
-                background: "var(--bg-primary)",
-                border: "1px solid var(--border-color)",
-                borderRadius: "var(--radius-sm)",
-                padding: 14,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {detail.hexStub}
-            </pre>
+            <p style={{ marginTop: 12, fontSize: 14 }}>{detail.notes || "—"}</p>
+            {detail.reviewNote ? (
+              <p style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>
+                Last review note: {detail.reviewNote}
+              </p>
+            ) : null}
           </AdminPanel>
           <AdminPanel title="Review actions">
             <label style={{ display: "flex", gap: 8, marginBottom: 14, fontSize: 14 }}>
@@ -187,7 +170,7 @@ export function UploadsManager({ detailId }: { detailId?: string }) {
                 checked={publish}
                 onChange={(e) => setPublish(e.target.checked)}
               />
-              Publish to admin library (FILES_KEY)
+              Publish to public library on approve
             </label>
             <div className="field">
               <label htmlFor="reason">Reason / note</label>
@@ -196,28 +179,31 @@ export function UploadsManager({ detailId }: { detailId?: string }) {
                 rows={3}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Required for Needs changes / Reject"
+                placeholder="Required for Needs info / Reject"
               />
             </div>
             <div className="action-btns" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               <button
                 type="button"
                 className="btn btn-success btn-sm"
-                onClick={() => setStatus(detail.id, "Verified", "Approved for library")}
+                disabled={pending || detail.status === "approved"}
+                onClick={() => review(detail.id, "approved")}
               >
                 Approve & publish
               </button>
               <button
                 type="button"
                 className="btn btn-gold btn-sm"
-                onClick={() => setStatus(detail.id, "Needs changes", reason)}
+                disabled={pending}
+                onClick={() => review(detail.id, "needs_info")}
               >
-                Needs changes
+                Needs info
               </button>
               <button
                 type="button"
                 className="btn btn-danger btn-sm"
-                onClick={() => setStatus(detail.id, "Rejected", reason)}
+                disabled={pending}
+                onClick={() => review(detail.id, "rejected")}
               >
                 Reject
               </button>
@@ -236,11 +222,21 @@ export function UploadsManager({ detailId }: { detailId?: string }) {
     <>
       <AdminPageHeader
         title="Upload Review"
-        description="Approve, request changes, or reject customer dumps. Admin owns publish decisions."
+        description="Live customer uploads from MongoDB — approve, request info, or reject."
       />
-      <AdminPanel title={`Uploads (${list.length})`}>
-        {list.length === 0 ? (
-          <EmptyState title="Queue clear" body="No uploads to review." />
+      {error ? <div className="toast show error">{error}</div> : null}
+      <AdminPanel
+        title={`Uploads (${rows.length})`}
+        actions={
+          <button type="button" className="btn btn-outline btn-sm" onClick={load}>
+            Refresh
+          </button>
+        }
+      >
+        {loading ? (
+          <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+        ) : rows.length === 0 ? (
+          <EmptyState title="Queue clear" body="No uploads in the database yet." />
         ) : (
           <AdminTable>
             <div className="lib-row head admin-row-uploads">
@@ -252,13 +248,15 @@ export function UploadsManager({ detailId }: { detailId?: string }) {
               <span>Status</span>
               <span>Actions</span>
             </div>
-            {list.map((u) => (
+            {rows.map((u) => (
               <div className="lib-row admin-row-uploads" key={u.id}>
-                <span className="lib-model">{u.filename}</span>
-                <span>{u.model}</span>
-                <span>{u.brand}</span>
-                <span className="admin-cell-muted">{u.uploadedBy}</span>
-                <span className="admin-cell-date">{u.submittedAt}</span>
+                <span className="lib-model">{u.originalName}</span>
+                <span>{u.boardNumber || u.modelNumber}</span>
+                <span>{u.brandName || "—"}</span>
+                <span className="admin-cell-muted">{u.uploaderName}</span>
+                <span className="admin-cell-date">
+                  {new Date(u.createdAt).toLocaleString()}
+                </span>
                 <span>
                   <StatusBadge status={u.status} />
                 </span>

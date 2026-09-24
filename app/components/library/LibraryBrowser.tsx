@@ -40,11 +40,20 @@ function requestHref(model: string, loggedIn: boolean) {
   return `/login?next=${encodeURIComponent(`/portal/requests?${q}`)}`;
 }
 
+function formatSize(bytes: number): string {
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
 export function LibraryBrowser() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [loggedIn, setLoggedIn] = useState(false);
+  const [apiFiles, setApiFiles] = useState<LibraryFile[]>([]);
+  const [sort, setSort] = useState(searchParams.get("sort") ?? "newest");
+  const [access, setAccess] = useState(searchParams.get("access") ?? "");
 
   const [q, setQ] = useState(searchParams.get("q") ?? "");
   const [brand, setBrand] = useState(searchParams.get("brand") ?? "");
@@ -65,6 +74,53 @@ export function LibraryBrowser() {
     };
   }, []);
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("q", q.trim());
+      if (brand) params.set("brand", brand);
+      if (type) params.set("fileType", type);
+      if (category) params.set("category", category);
+      if (verifiedOnly) params.set("verification", "verified");
+      if (access) params.set("access", access);
+      if (sort) params.set("sort", sort);
+      params.set("limit", "100");
+      fetch(`/api/files?${params}`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data?.items) return;
+          setApiFiles(
+            data.items.map(
+              (f: {
+                id: string;
+                modelNumber?: string;
+                boardNumber?: string;
+                name: string;
+                brandName?: string;
+                fileType: string;
+                sizeBytes: number;
+                verificationStatus: string;
+                description: string;
+                categoryName?: string;
+              }) =>
+                ({
+                  id: f.id,
+                  model: f.modelNumber || f.boardNumber || f.name,
+                  brand: f.brandName || "Other",
+                  type: f.fileType as LibraryFile["type"],
+                  category: category || "bios-dumps",
+                  size: formatSize(f.sizeBytes),
+                  verified: f.verificationStatus === "verified",
+                  description: f.description,
+                }) satisfies LibraryFile,
+            ),
+          );
+        })
+        .catch(() => undefined);
+    }, 280);
+    return () => clearTimeout(t);
+  }, [q, brand, type, category, verifiedOnly, access, sort]);
+
   const syncUrl = useCallback(
     (next: {
       q?: string;
@@ -72,6 +128,8 @@ export function LibraryBrowser() {
       type?: string;
       category?: string;
       verified?: boolean;
+      sort?: string;
+      access?: string;
     }) => {
       const params = new URLSearchParams();
       const qq = next.q ?? q;
@@ -79,21 +137,36 @@ export function LibraryBrowser() {
       const tt = next.type ?? type;
       const cc = next.category ?? category;
       const vv = next.verified ?? verifiedOnly;
+      const ss = next.sort ?? sort;
+      const aa = next.access ?? access;
       if (qq) params.set("q", qq);
       if (bb) params.set("brand", bb);
       if (tt) params.set("type", tt);
       if (cc) params.set("category", cc);
       if (vv) params.set("verified", "1");
+      if (ss && ss !== "newest") params.set("sort", ss);
+      if (aa) params.set("access", aa);
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [q, brand, type, category, verifiedOnly, pathname, router],
+    [q, brand, type, category, verifiedOnly, sort, access, pathname, router],
   );
 
-  const filtered = useMemo(
-    () => filterFiles(LIBRARY_FILES, q, brand, type, category, verifiedOnly),
-    [q, brand, type, category, verifiedOnly],
-  );
+  const filtered = useMemo(() => {
+    const staticFiltered = filterFiles(
+      LIBRARY_FILES,
+      q,
+      brand,
+      type,
+      category,
+      verifiedOnly,
+    );
+    const merged = [...apiFiles];
+    for (const s of staticFiltered) {
+      if (!merged.some((m) => m.id === s.id || m.model === s.model)) merged.push(s);
+    }
+    return merged;
+  }, [apiFiles, q, brand, type, category, verifiedOnly]);
 
   const clearFilters = () => {
     setQ("");
@@ -101,10 +174,14 @@ export function LibraryBrowser() {
     setType("");
     setCategory("");
     setVerifiedOnly(false);
+    setSort("newest");
+    setAccess("");
     router.replace(pathname, { scroll: false });
   };
 
-  const hasFilters = Boolean(q || brand || type || category || verifiedOnly);
+  const hasFilters = Boolean(
+    q || brand || type || category || verifiedOnly || access || (sort && sort !== "newest"),
+  );
 
   return (
     <div>
@@ -159,6 +236,29 @@ export function LibraryBrowser() {
               {c.name}
             </option>
           ))}
+        </select>
+        <select
+          value={access}
+          onChange={(e) => {
+            setAccess(e.target.value);
+            syncUrl({ access: e.target.value });
+          }}
+        >
+          <option value="">Free + paid</option>
+          <option value="free">Free</option>
+          <option value="paid">Paid</option>
+        </select>
+        <select
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value);
+            syncUrl({ sort: e.target.value });
+          }}
+        >
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="alpha">A–Z</option>
+          <option value="popular">Popular</option>
         </select>
         <label
           style={{

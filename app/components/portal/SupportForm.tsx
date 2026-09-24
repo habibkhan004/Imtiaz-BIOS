@@ -3,57 +3,94 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
-import { SUPPORT_TICKETS, type SupportTicket } from "../../lib/portal-data";
 import { StatusBadge } from "./ui";
 
-const KEY = "imtiaz-portal-support";
+type ApiTicket = {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  type: string;
+  priority: string;
+  status: string;
+  updatedAt: string;
+};
 
 export function SupportClient() {
   const router = useRouter();
-  const [rows, setRows] = useState<SupportTicket[]>(SUPPORT_TICKETS);
+  const [rows, setRows] = useState<ApiTicket[]>([]);
+  const [ticketType, setTicketType] = useState<"technical" | "password" | "general">(
+    "technical",
+  );
   const [subject, setSubject] = useState("");
+  const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
-  const [priority, setPriority] = useState<"Low" | "Normal" | "High">("Normal");
+  const [boardNumber, setBoardNumber] = useState("");
+  const [serviceId, setServiceId] = useState("");
+  const [symptoms, setSymptoms] = useState("");
+  const [priority, setPriority] = useState("normal");
   const [description, setDescription] = useState("");
-  const [toast, setToast] = useState(false);
+  const [ownershipAck, setOwnershipAck] = useState(false);
+  const [toast, setToast] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  const load = () => {
+    fetch("/api/requests/my", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.tickets) setRows(data.tickets);
+      })
+      .catch(() => undefined);
+  };
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) setRows(JSON.parse(raw) as SupportTicket[]);
-    } catch {
-      /* ignore */
-    }
+    load();
   }, []);
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setError("");
     if (!subject.trim() || !description.trim()) return;
-    const id = `TS-${200 + rows.length + Math.floor(Math.random() * 40)}`;
-    const next: SupportTicket = {
-      id,
-      subject: subject.trim(),
-      model: model.trim() || "—",
-      priority,
-      description: description.trim(),
-      status: "Open",
-      updatedAt: new Date().toISOString().slice(0, 10),
-      messages: [
-        {
-          at: new Date().toISOString().slice(0, 16).replace("T", " "),
-          from: "customer",
-          text: description.trim(),
-        },
-      ],
-    };
-    const updated = [next, ...rows];
-    setRows(updated);
-    localStorage.setItem(KEY, JSON.stringify(updated));
-    setSubject("");
-    setModel("");
-    setDescription("");
-    setToast(true);
-    setTimeout(() => setToast(false), 2500);
+    if (ticketType === "password" && !ownershipAck) {
+      setError("You must confirm authorization/ownership before submitting.");
+      return;
+    }
+    setPending(true);
+    try {
+      const res = await fetch("/api/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          requestType: ticketType,
+          subject: subject.trim(),
+          brand,
+          model,
+          boardNumber,
+          serviceIdentifier: serviceId,
+          symptoms,
+          description: description.trim(),
+          priority,
+          ownershipAck,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to submit.");
+        return;
+      }
+      setToast(`✅ ${data.ticket.ticketNumber} created`);
+      setSubject("");
+      setDescription("");
+      setSymptoms("");
+      setOwnershipAck(false);
+      load();
+      setTimeout(() => setToast(""), 2500);
+    } catch {
+      setError("Network error.");
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -61,6 +98,20 @@ export function SupportClient() {
       <div className="portal-panel">
         <h2>Open support ticket</h2>
         <form onSubmit={onSubmit}>
+          <div className="field">
+            <label htmlFor="sType">Type</label>
+            <select
+              id="sType"
+              value={ticketType}
+              onChange={(e) =>
+                setTicketType(e.target.value as "technical" | "password" | "general")
+              }
+            >
+              <option value="technical">Technical support</option>
+              <option value="password">Password / firmware support</option>
+              <option value="general">General</option>
+            </select>
+          </div>
           <div className="field">
             <label htmlFor="sSub">Subject</label>
             <input
@@ -72,24 +123,78 @@ export function SupportClient() {
           </div>
           <div className="field-row">
             <div className="field">
-              <label htmlFor="sModel">Board / model</label>
+              <label htmlFor="sBrand">Brand</label>
+              <input id="sBrand" value={brand} onChange={(e) => setBrand(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="sModel">Model</label>
               <input id="sModel" value={model} onChange={(e) => setModel(e.target.value)} />
+            </div>
+          </div>
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="sBoard">Board number</label>
+              <input
+                id="sBoard"
+                value={boardNumber}
+                onChange={(e) => setBoardNumber(e.target.value)}
+              />
             </div>
             <div className="field">
               <label htmlFor="sPri">Priority</label>
               <select
                 id="sPri"
                 value={priority}
-                onChange={(e) =>
-                  setPriority(e.target.value as "Low" | "Normal" | "High")
-                }
+                onChange={(e) => setPriority(e.target.value)}
               >
-                <option>Low</option>
-                <option>Normal</option>
-                <option>High</option>
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
               </select>
             </div>
           </div>
+          {ticketType === "password" ? (
+            <>
+              <div className="field">
+                <label htmlFor="sSvc">Service identifier</label>
+                <input
+                  id="sSvc"
+                  value={serviceId}
+                  onChange={(e) => setServiceId(e.target.value)}
+                  placeholder="Service tag / serial"
+                />
+              </div>
+              <label
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "flex-start",
+                  fontSize: 13,
+                  color: "var(--text-secondary)",
+                  marginBottom: 14,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={ownershipAck}
+                  onChange={(e) => setOwnershipAck(e.target.checked)}
+                  style={{ marginTop: 3 }}
+                />
+                I confirm I own this device or am authorized by the owner to request
+                password/firmware support. Unauthorized requests are prohibited.
+              </label>
+            </>
+          ) : (
+            <div className="field">
+              <label htmlFor="sSym">Symptoms</label>
+              <input
+                id="sSym"
+                value={symptoms}
+                onChange={(e) => setSymptoms(e.target.value)}
+              />
+            </div>
+          )}
           <div className="field">
             <label htmlFor="sDesc">Description</label>
             <textarea
@@ -100,10 +205,11 @@ export function SupportClient() {
               required
             />
           </div>
-          <button className="btn btn-success btn-sm" type="submit">
-            Submit ticket
+          {error ? <div className="toast show error">{error}</div> : null}
+          <button className="btn btn-success btn-sm" type="submit" disabled={pending}>
+            {pending ? "Submitting…" : "Submit ticket"}
           </button>
-          {toast ? <div className="toast show">✅ Support ticket created.</div> : null}
+          {toast ? <div className="toast show">{toast}</div> : null}
         </form>
       </div>
 
@@ -116,35 +222,32 @@ export function SupportClient() {
             <div className="lib-row head">
               <span>ID</span>
               <span>Subject</span>
-              <span>Priority</span>
+              <span>Type</span>
               <span>Status</span>
-              <span>Updated</span>
-              <span></span>
+              <span />
             </div>
-            {rows.map((t) => (
-              <div className="lib-row" key={t.id}>
-                <span className="lib-model">
-                  <Link href={`/portal/support/${t.id}`}>{t.id}</Link>
-                </span>
-                <span>{t.subject}</span>
-                <span>{t.priority}</span>
+            {rows.map((r) => (
+              <div className="lib-row" key={r.id}>
+                <span className="lib-model">{r.ticketNumber}</span>
+                <span>{r.subject}</span>
+                <span>{r.type}</span>
                 <span>
-                  <StatusBadge status={t.status} />
+                  <StatusBadge status={r.status} />
                 </span>
-                <span>{t.updatedAt}</span>
-                <div className="action-btns">
-                  <button
-                    type="button"
-                    className="btn btn-success btn-sm"
-                    onClick={() => router.push(`/portal/support/${t.id}`)}
-                  >
-                    View
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="btn btn-success btn-sm"
+                  onClick={() => router.push(`/portal/support/${r.id}`)}
+                >
+                  View
+                </button>
               </div>
             ))}
           </div>
         )}
+        <Link href="/portal/requests" className="btn btn-outline btn-sm" style={{ marginTop: 12 }}>
+          File requests
+        </Link>
       </div>
     </>
   );

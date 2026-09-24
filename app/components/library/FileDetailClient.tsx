@@ -8,28 +8,24 @@ import { recordPortalDownload } from "../../lib/portal-data";
 import type { LibraryFile } from "../../lib/site-data";
 import { CATEGORIES, LIBRARY_FILES } from "../../lib/site-data";
 
-function simulateDownload(file: LibraryFile) {
-  let ext = ".bin";
-  if (file.type === "Boardview") ext = ".brd";
-  else if (file.type === "Schematic") ext = ".wrl";
-  else if (file.type === "EC firmware") ext = ".bin";
-  const content = `IMTIAZ BIOS DUMP\nBoard: ${file.model}\nType: ${file.type}\nGenerated: ${new Date().toISOString()}\n`;
-  const blob = new Blob([content], { type: "application/octet-stream" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${file.model}${ext}`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-}
-
-export function FileDetailClient({ file }: { file: LibraryFile }) {
+export function FileDetailClient({
+  file,
+  apiFileId,
+}: {
+  file: LibraryFile;
+  apiFileId?: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<AuthSession | null>(null);
   const [toast, setToast] = useState("");
+  const [meta, setMeta] = useState<{
+    accessType?: string;
+    price?: number;
+    verificationStatus?: string;
+    version?: string;
+    entitlement?: { ok: boolean; reason: string; message?: string };
+  } | null>(null);
   const category = CATEGORIES.find((c) => c.slug === file.category);
   const related = LIBRARY_FILES.filter(
     (f) =>
@@ -44,25 +40,100 @@ export function FileDetailClient({ file }: { file: LibraryFile }) {
     return () => window.removeEventListener("imtiaz-auth-change", sync);
   }, []);
 
+  useEffect(() => {
+    if (!apiFileId || apiFileId.length < 20) return;
+    fetch(`/api/files/${apiFileId}`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.file) return;
+        setMeta({
+          accessType: data.file.accessType,
+          price: data.file.price,
+          verificationStatus: data.file.verificationStatus,
+          version: data.file.version,
+          entitlement: data.entitlement,
+        });
+      })
+      .catch(() => undefined);
+  }, [apiFileId]);
+
   const loggedIn = Boolean(user);
-  const canDownload = user?.role === "customer" || user?.role === "admin";
   const loginNext = `/login?next=${encodeURIComponent(pathname)}`;
   const requestPath = `/portal/requests?model=${encodeURIComponent(file.model)}`;
   const requestHref = loggedIn
     ? requestPath
     : `/login?next=${encodeURIComponent(requestPath)}`;
+  const canDownload =
+    meta?.entitlement?.ok ||
+    (!meta && (user?.role === "customer" || user?.role === "admin"));
 
-  const onDownload = () => {
+  const onDownload = async () => {
     if (!loggedIn) {
       router.push(loginNext);
       return;
     }
+    if (apiFileId && apiFileId.length >= 20) {
+      try {
+        const res = await fetch(`/api/files/${apiFileId}/download`, {
+          credentials: "include",
+        });
+        if (res.status === 401) {
+          router.push(loginNext);
+          return;
+        }
+        if (res.status === 403) {
+          const data = await res.json().catch(() => ({}));
+          setToast(data.error || "Subscribe or purchase to download.");
+          setTimeout(() => setToast(""), 3000);
+          return;
+        }
+        if (!res.ok) {
+          setToast("Download failed.");
+          setTimeout(() => setToast(""), 2500);
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${file.model}.bin`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        if (user?.role === "customer") {
+          recordPortalDownload({
+            fileId: file.id,
+            model: file.model,
+            brand: file.brand,
+            type: file.type,
+          });
+        }
+        setToast("✅ Authorized download started");
+        setTimeout(() => setToast(""), 2000);
+        return;
+      } catch {
+        setToast("Network error during download.");
+        setTimeout(() => setToast(""), 2500);
+        return;
+      }
+    }
+
     if (!canDownload) {
       setToast("Log in or register as a customer to download.");
       setTimeout(() => setToast(""), 2500);
       return;
     }
-    simulateDownload(file);
+    const content = `IMTIAZ BIOS DUMP\nBoard: ${file.model}\nType: ${file.type}\n`;
+    const blob = new Blob([content], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${file.model}.bin`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     if (user?.role === "customer") {
       recordPortalDownload({
         fileId: file.id,
@@ -75,6 +146,12 @@ export function FileDetailClient({ file }: { file: LibraryFile }) {
     setTimeout(() => setToast(""), 2000);
   };
 
+  const paidBlocked =
+    meta &&
+    meta.accessType === "paid" &&
+    meta.entitlement &&
+    !meta.entitlement.ok;
+
   return (
     <div className="wrap">
       <div className="section-head reveal" style={{ maxWidth: 800 }}>
@@ -84,7 +161,15 @@ export function FileDetailClient({ file }: { file: LibraryFile }) {
         </h2>
         <p>
           {file.type} · {file.brand} · {file.size}
-          {file.verified ? " · verified on real boards" : " · pending verification"}
+          {meta?.version ? ` · v${meta.version}` : ""}
+          {file.verified || meta?.verificationStatus === "verified"
+            ? " · verified"
+            : " · pending verification"}
+          {meta?.accessType === "paid"
+            ? ` · paid $${meta.price ?? 0}`
+            : meta?.accessType === "free"
+              ? " · free"
+              : ""}
         </p>
       </div>
 
@@ -94,73 +179,70 @@ export function FileDetailClient({ file }: { file: LibraryFile }) {
           <h2 style={{ marginTop: 12 }}>{file.model}</h2>
           <p style={{ marginTop: 14 }}>
             <span className="tag tag-brand">{file.brand}</span>{" "}
-            {file.verified ? (
+            {file.verified || meta?.verificationStatus === "verified" ? (
               <span className="tag tag-verified">✓ verified</span>
-            ) : null}
-          </p>
-          <p>
-            Type: <strong>{file.type}</strong>
-            <br />
-            Category:{" "}
-            <Link
-              href={`/categories/${file.category}`}
-              style={{ color: "var(--accent-cyan)" }}
-            >
-              {category?.name ?? file.category}
-            </Link>
-            <br />
-            Size: <strong>{file.size}</strong>
-          </p>
-          <p>{file.description}</p>
-          <div className="hero-actions" style={{ marginBottom: 0 }}>
-            {canDownload ? (
-              <button type="button" className="btn btn-primary" onClick={onDownload}>
-                ⬇ Download (demo)
-              </button>
             ) : (
-              <Link href={loginNext} className="btn btn-primary">
-                ⬇ Log in to download
-              </Link>
+              <span className="tag">{meta?.verificationStatus || "pending"}</span>
             )}
-            <Link href={requestHref} className="btn btn-outline">
-              📩 Request this board
-            </Link>
-            <Link href="/library" className="btn btn-outline">
-              ← Back to library
-            </Link>
-          </div>
-          <p className="form-note">
-            {canDownload
-              ? "Downloads are simulated in this demo build."
-              : "Log in or register to continue — downloads require an account."}
           </p>
-          {toast ? <div className="toast show">{toast}</div> : null}
+          <p style={{ marginTop: 16, color: "var(--text-secondary)" }}>
+            {file.description}
+          </p>
+          {category ? (
+            <p style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>
+              Category: {category.name}
+            </p>
+          ) : null}
         </div>
         <div>
-          <span className="eyebrow">RELATED FILES</span>
-          <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-            {related.length === 0 ? (
-              <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-                No related files yet.
-              </p>
-            ) : (
-              related.map((r) => (
-                <Link
-                  key={r.id}
-                  href={`/library/${r.id}`}
-                  className="brand-card"
-                  style={{ textAlign: "left", padding: "16px 18px" }}
-                >
-                  <h3 style={{ fontSize: 15 }}>{r.model}</h3>
-                  <p>
-                    {r.brand} · {r.type}
-                  </p>
+          <span className="eyebrow">ACTIONS</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+            {paidBlocked ? (
+              <>
+                <Link href="/portal/subscription" className="btn btn-primary">
+                  Subscribe / purchase
                 </Link>
-              ))
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  {meta?.entitlement && "message" in meta.entitlement
+                    ? meta.entitlement.message
+                    : "Paid resource — entitlement required."}
+                </p>
+              </>
+            ) : (
+              <button type="button" className="btn btn-primary" onClick={onDownload}>
+                {loggedIn ? "Download" : "Sign in to download"}
+              </button>
             )}
+            <Link href={requestHref} className="btn btn-ghost">
+              Request variant
+            </Link>
+            <Link href="/library" className="btn btn-ghost">
+              Back to library
+            </Link>
           </div>
+          {toast ? (
+            <div className="toast show" style={{ marginTop: 16 }}>
+              {toast}
+            </div>
+          ) : null}
         </div>
       </div>
+
+      {related.length ? (
+        <div className="reveal">
+          <h3 style={{ marginBottom: 16 }}>Related files</h3>
+          <div className="file-grid">
+            {related.map((r) => (
+              <Link key={r.id} href={`/library/${r.id}`} className="file-card">
+                <strong>{r.model}</strong>
+                <span>
+                  {r.brand} · {r.type}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

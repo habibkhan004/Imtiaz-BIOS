@@ -2,97 +2,118 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
-import {
-  allowedStatuses,
-  loadAssignedRequest,
-  saveReview,
-  TECH_CHANGE_EVENT,
-  type TechAssignedRequest,
-  type TechStatus,
-} from "../../lib/tech-data";
+import { useState, type FormEvent } from "react";
 
-const ASSESSMENTS = [
-  "Looks valid",
-  "Needs more info",
-  "Cannot fulfill",
-  "Ready to fulfill",
-] as const;
+type ReviewItem = {
+  kind: "request" | "ticket" | "upload";
+  id: string;
+  type: "file_request" | "support" | "upload";
+  status: string;
+};
 
-export function ReviewForm({ item: seed }: { item: TechAssignedRequest }) {
+const REQUEST_STATUSES = [
+  "pending",
+  "assigned",
+  "in_progress",
+  "needs_info",
+  "completed",
+  "closed",
+  "rejected",
+];
+const TICKET_STATUSES = [
+  "pending",
+  "open",
+  "assigned",
+  "in_progress",
+  "waiting_customer",
+  "resolved",
+  "closed",
+];
+const UPLOAD_STATUSES = ["pending", "approved", "needs_info", "rejected"];
+
+function statusesFor(type: ReviewItem["type"]) {
+  if (type === "file_request") return REQUEST_STATUSES;
+  if (type === "support") return TICKET_STATUSES;
+  return UPLOAD_STATUSES;
+}
+
+export function ReviewForm({
+  item,
+  onDone,
+}: {
+  item: ReviewItem;
+  onDone?: () => void;
+}) {
   const router = useRouter();
-  const [item, setItem] = useState(seed);
-  const [assessment, setAssessment] = useState<(typeof ASSESSMENTS)[number]>(
-    "Looks valid",
-  );
-  const [nextStatus, setNextStatus] = useState<TechStatus>(
-    allowedStatuses(seed.type)[1] ?? seed.status,
-  );
+  const allowed = statusesFor(item.type);
+  const [nextStatus, setNextStatus] = useState(allowed[1] ?? item.status);
   const [summary, setSummary] = useState("");
-  const [chip, setChip] = useState(false);
-  const [rev, setRev] = useState(false);
-  const [sizeOk, setSizeOk] = useState(false);
-  const [checksum, setChecksum] = useState("");
-  const [toast, setToast] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState(false);
+  const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    const sync = () => {
-      const live = loadAssignedRequest(seed.id);
-      if (live) setItem(live);
-    };
-    sync();
-    window.addEventListener(TECH_CHANGE_EVENT, sync);
-    return () => window.removeEventListener(TECH_CHANGE_EVENT, sync);
-  }, [seed.id]);
-
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!summary.trim()) {
       setError("Internal summary is required.");
       return;
     }
     setError("");
-    saveReview(
-      item.id,
-      {
-        assessment,
-        summary,
-        checklist: { chip, rev, sizeOk, checksum },
-      },
-      nextStatus,
-    );
-    setToast(true);
-    setTimeout(() => router.push(`/tech/requests/${item.id}/status`), 800);
+    setPending(true);
+    try {
+      if (item.kind === "upload") {
+        const res = await fetch(`/api/uploads/${item.id}`, {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: nextStatus,
+            reviewNote: summary.trim(),
+            publish: nextStatus === "approved",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "Save failed");
+          return;
+        }
+      } else {
+        const res = await fetch(`/api/requests/${item.id}`, {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: nextStatus,
+            message: summary.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "Save failed");
+          return;
+        }
+      }
+      setToast(true);
+      onDone?.();
+      setTimeout(() => router.push(`/tech/requests/${item.id}/status`), 800);
+    } catch {
+      setError("Network error");
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
     <form className="portal-panel" onSubmit={onSubmit} noValidate>
       <h2>Review form</h2>
       <div className="field">
-        <label htmlFor="assessment">Assessment</label>
-        <select
-          id="assessment"
-          value={assessment}
-          onChange={(e) =>
-            setAssessment(e.target.value as (typeof ASSESSMENTS)[number])
-          }
-        >
-          {ASSESSMENTS.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="nextStatus">Recommended next status</label>
+        <label htmlFor="nextStatus">Recommended status</label>
         <select
           id="nextStatus"
           value={nextStatus}
-          onChange={(e) => setNextStatus(e.target.value as TechStatus)}
+          onChange={(e) => setNextStatus(e.target.value)}
         >
-          {allowedStatuses(item.type).map((s) => (
+          {allowed.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
@@ -100,64 +121,30 @@ export function ReviewForm({ item: seed }: { item: TechAssignedRequest }) {
         </select>
       </div>
       <div className="field">
-        <label htmlFor="summary">Internal summary *</label>
+        <label htmlFor="summary">Internal / customer note</label>
         <textarea
           id="summary"
           rows={4}
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
-          placeholder="What did you find? What should happen next?"
+          required
         />
       </div>
-      <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
-        <span className="eyebrow">CHECKLIST</span>
-        <label style={{ display: "flex", gap: 8, fontSize: 14 }}>
-          <input type="checkbox" checked={chip} onChange={(e) => setChip(e.target.checked)} />
-          Chip / part matches request
-        </label>
-        <label style={{ display: "flex", gap: 8, fontSize: 14 }}>
-          <input type="checkbox" checked={rev} onChange={(e) => setRev(e.target.checked)} />
-          Board revision confirmed
-        </label>
-        <label style={{ display: "flex", gap: 8, fontSize: 14 }}>
-          <input
-            type="checkbox"
-            checked={sizeOk}
-            onChange={(e) => setSizeOk(e.target.checked)}
-          />
-          Dump size looks correct
-        </label>
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label htmlFor="checksum">Checksum / integrity note</label>
-          <input
-            id="checksum"
-            value={checksum}
-            onChange={(e) => setChecksum(e.target.value)}
-            placeholder="Optional"
-          />
-        </div>
-      </div>
       {error ? (
-        <div className="toast show error" style={{ marginBottom: 12 }}>
-          {error}
-        </div>
+        <p style={{ color: "var(--danger)", fontSize: 13, marginBottom: 12 }}>{error}</p>
+      ) : null}
+      {toast ? (
+        <p style={{ color: "var(--accent-cyan)", fontSize: 13, marginBottom: 12 }}>
+          Saved
+        </p>
       ) : null}
       <div className="action-btns">
-        <button type="submit" className="btn btn-success btn-sm">
-          Submit review
+        <button type="submit" className="btn btn-success btn-sm" disabled={pending}>
+          Save review
         </button>
-        <Link href={`/tech/messages/${item.id}`} className="btn btn-primary btn-sm">
-          Message customer
-        </Link>
-        <Link href={`/tech/notes/${item.id}`} className="btn btn-purple btn-sm">
-          Notes
-        </Link>
         <Link href="/tech" className="btn btn-outline btn-sm">
-          Back to queue
+          Cancel
         </Link>
-      </div>
-      <div className={`toast${toast ? " show" : ""}`}>
-        ✅ Review saved — opening status update…
       </div>
     </form>
   );
