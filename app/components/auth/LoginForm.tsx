@@ -5,47 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import {
   homeForRole,
-  isAdminEmail,
-  isTechnicianEmail,
+  roleFromApi,
   writeAuth,
   type AuthSession,
 } from "../../lib/auth";
-import {
-  ADMIN_PROFILE,
-  ADMIN_USERS,
-  USERS_KEY,
-  loadJson,
-  type AdminRole,
-  type AdminUser,
-} from "../../lib/admin-data";
-import { TECH_PROFILE } from "../../lib/tech-data";
-
-function resolveSession(emailRaw: string): AuthSession {
-  const email = emailRaw.trim().toLowerCase();
-  const users = loadJson<AdminUser[]>(USERS_KEY, ADMIN_USERS);
-  const match = users.find((u) => u.email.toLowerCase() === email);
-
-  if (match) {
-    if (match.status === "Suspended") {
-      throw new Error("This account is suspended. Contact an administrator.");
-    }
-    const role = match.role as AdminRole;
-    return { role, email: match.email, name: match.name };
-  }
-
-  if (isAdminEmail(email)) {
-    return { role: "admin", email, name: ADMIN_PROFILE.name };
-  }
-  if (isTechnicianEmail(email)) {
-    return { role: "technician", email, name: TECH_PROFILE.name };
-  }
-  const name = email.split("@")[0].replace(/[._]/g, " ") || "Customer";
-  return {
-    role: "customer",
-    email,
-    name: name.replace(/\b\w/g, (c) => c.toUpperCase()),
-  };
-}
 
 export function LoginForm() {
   const router = useRouter();
@@ -54,15 +17,16 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [toast, setToast] = useState(false);
+  const [pending, setPending] = useState(false);
 
-  const go = (session: AuthSession) => {
+  const go = (session: AuthSession, redirectTo?: string) => {
     writeAuth(session);
     setToast(true);
     const nextParam = searchParams.get("next");
     let dest =
       nextParam && nextParam.startsWith("/")
         ? nextParam
-        : homeForRole(session.role);
+        : redirectTo || homeForRole(session.role);
 
     if (session.role === "admin" && (dest.startsWith("/portal") || dest.startsWith("/tech"))) {
       dest = "/admin";
@@ -77,7 +41,7 @@ export function LoginForm() {
     setTimeout(() => router.push(dest), 700);
   };
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     if (!email.trim() || !password.trim()) {
@@ -88,10 +52,30 @@ export function LoginForm() {
       setError("Enter a valid email address.");
       return;
     }
+    setPending(true);
     try {
-      go(resolveSession(email));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to sign in.");
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Unable to sign in.");
+        return;
+      }
+      const session: AuthSession = {
+        role: roleFromApi(data.user.role),
+        email: data.user.email,
+        name: data.user.name,
+        userId: data.user.id,
+      };
+      go(session, data.redirectTo);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setPending(false);
     }
   };
 
@@ -124,12 +108,22 @@ export function LoginForm() {
           {error}
         </div>
       ) : null}
-      <button className="btn btn-primary" type="submit" style={{ width: "100%" }}>
-        Continue
+      <button
+        className="btn btn-primary"
+        type="submit"
+        style={{ width: "100%" }}
+        disabled={pending}
+      >
+        {pending ? "Signing in…" : "Continue"}
       </button>
       <div className={`toast${toast ? " show" : ""}`}>
         ✅ Signed in — opening your console…
       </div>
+      <p className="form-note">
+        <Link href="/forgot-password" style={{ color: "var(--accent-cyan)" }}>
+          Forgot password?
+        </Link>
+      </p>
       <p className="form-note">
         No account?{" "}
         <Link href="/register" style={{ color: "var(--accent-cyan)" }}>

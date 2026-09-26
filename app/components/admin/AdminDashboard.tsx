@@ -1,40 +1,68 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import {
-  ADMIN_AUDIT_SEED,
-  ADMIN_PROFILE,
-  ADMIN_REQUESTS,
-  ADMIN_SUPPORT,
-  ADMIN_UPLOADS,
-  getAuditEvents,
-  getDashboardStats,
-} from "../../lib/admin-data";
+import { useEffect, useMemo, useState } from "react";
 import { readAuth } from "../../lib/auth";
 import { AdminPanel, StatusBadge } from "./ui";
 
+type DashStats = {
+  totalUsers: number;
+  activeUsers: number;
+  newRegistrations: number;
+  totalFiles: number;
+  verifiedFiles: number;
+  pendingUploads: number;
+  freeFiles: number;
+  paidFiles: number;
+  downloadsToday: number;
+  openRequests: number;
+  openTickets: number;
+  activeSubscriptions: number;
+  expiredSubscriptions: number;
+  paymentCount: number;
+  failedPayments: number;
+  revenue: number;
+};
+
 export function AdminDashboard() {
-  const stats = getDashboardStats();
-  const [name] = useState(() => readAuth()?.name ?? ADMIN_PROFILE.name);
-  const audits = useMemo(() => {
-    try {
-      return getAuditEvents().slice(0, 5);
-    } catch {
-      return ADMIN_AUDIT_SEED.slice(0, 5);
-    }
+  const [name] = useState(() => readAuth()?.name ?? "Admin");
+  const [stats, setStats] = useState<DashStats | null>(null);
+  const [recentUploads, setRecentUploads] = useState<
+    { id: string; originalName: string; status: string; boardNumber: string }[]
+  >([]);
+  const [recentAudit, setRecentAudit] = useState<
+    { id: string; summary: string; createdAt: string; action: string }[]
+  >([]);
+
+  useEffect(() => {
+    fetch("/api/admin/dashboard", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.stats) return;
+        setStats(data.stats);
+        setRecentUploads(data.recentUploads || []);
+        setRecentAudit(data.recentAudit || []);
+      })
+      .catch(() => undefined);
   }, []);
 
-  const pendingUploads = ADMIN_UPLOADS.filter(
-    (u) => u.status === "Queued" || u.status === "Needs changes",
-  ).slice(0, 5);
-  const openRequests = ADMIN_REQUESTS.filter(
-    (r) => r.status === "Pending" || r.status === "In review",
-  ).slice(0, 5);
-  const openSupport = ADMIN_SUPPORT.filter((t) => t.status !== "Resolved").slice(
-    0,
-    5,
-  );
+  const cards = useMemo(() => {
+    if (!stats) return [];
+    return [
+      { label: "Users", value: stats.totalUsers },
+      { label: "Active users", value: stats.activeUsers },
+      { label: "New (7d)", value: stats.newRegistrations },
+      { label: "Library files", value: stats.totalFiles },
+      { label: "Verified", value: stats.verifiedFiles },
+      { label: "Uploads pending", value: stats.pendingUploads },
+      { label: "Free / paid", value: `${stats.freeFiles}/${stats.paidFiles}` },
+      { label: "Downloads today", value: stats.downloadsToday },
+      { label: "Open requests", value: stats.openRequests },
+      { label: "Open tickets", value: stats.openTickets },
+      { label: "Active subs", value: stats.activeSubscriptions },
+      { label: "Revenue (demo)", value: `$${stats.revenue}` },
+    ];
+  }, [stats]);
 
   return (
     <>
@@ -44,8 +72,7 @@ export function AdminDashboard() {
           <span className="accent-gold">Run the lab.</span>
         </h1>
         <p className="lead">
-          Users, library, requests, and billing — dark cyan console matched to the
-          public dashboard.
+          Live aggregates from the platform store — uploads, requests, billing, and library.
         </p>
         <div className="hero-actions">
           <Link href="/admin/uploads" className="btn btn-primary">
@@ -54,133 +81,75 @@ export function AdminDashboard() {
           <Link href="/admin/users" className="btn btn-purple">
             👤 Manage users
           </Link>
-          <Link href="/admin/reports" className="btn btn-gold">
-            📊 Reports
+          <Link href="/admin/requests" className="btn btn-gold">
+            📋 Requests
           </Link>
         </div>
         <div className="stat-row admin-stat-row">
-          <div className="stat">
-            <b>{stats.totalUsers}</b>
-            <span>Users</span>
-          </div>
-          <div className="stat">
-            <b>{stats.activeSubscriptions}</b>
-            <span>Active subs</span>
-          </div>
-          <div className="stat">
-            <b>{stats.uploadsPending}</b>
-            <span>Uploads pending</span>
-          </div>
-          <div className="stat">
-            <b>{stats.libraryFiles}</b>
-            <span>Library files</span>
-          </div>
-          <div className="stat">
-            <b>{stats.openFileRequests}</b>
-            <span>Open requests</span>
-          </div>
-          <div className="stat">
-            <b>{stats.paidRevenueMtd}</b>
-            <span>Paid MTD</span>
-          </div>
-          <div className="stat">
-            <b>{stats.openSupportTickets}</b>
-            <span>Support open</span>
-          </div>
-          <div className="stat">
-            <b>{stats.failedPayments}</b>
-            <span>Failed payments</span>
-          </div>
+          {cards.length === 0 ? (
+            <div className="stat">
+              <b>…</b>
+              <span>Loading</span>
+            </div>
+          ) : (
+            cards.slice(0, 5).map((c) => (
+              <div className="stat" key={c.label}>
+                <b>{c.value}</b>
+                <span>{c.label}</span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
-      <div className="portal-grid-2">
-        <QueuePanel
-          title="Pending uploads"
-          href="/admin/uploads"
-          rows={pendingUploads.map((u) => ({
-            id: u.id,
-            label: `${u.filename} · ${u.model}`,
-            status: u.status,
-            href: `/admin/uploads/${u.id}`,
-          }))}
-        />
-        <QueuePanel
-          title="Open requests"
-          href="/admin/requests"
-          rows={openRequests.map((r) => ({
-            id: r.id,
-            label: `${r.id} · ${r.model}`,
-            status: r.status,
-            href: `/admin/requests/${r.id}`,
-          }))}
-        />
-        <QueuePanel
-          title="Open support"
-          href="/admin/support"
-          rows={openSupport.map((t) => ({
-            id: t.id,
-            label: `${t.id} · ${t.subject}`,
-            status: t.status,
-            href: `/admin/support/${t.id}`,
-          }))}
-        />
-        <AdminPanel
-          title="Recent audit"
-          actions={
-            <Link href="/admin/audit" className="btn btn-success btn-sm">
-              View all
-            </Link>
-          }
-        >
-          <ul className="admin-audit-list">
-            {audits.map((a) => (
-              <li key={a.id}>
-                <div className="admin-audit-meta">
-                  {a.at} · {a.actor}
-                </div>
-                <div>
-                  <strong>{a.action}</strong> → {a.target}
-                </div>
-              </li>
+      <div className="admin-grid-2" style={{ marginTop: 24 }}>
+        <AdminPanel title="More metrics">
+          <div className="lib-table">
+            {cards.slice(5).map((c) => (
+              <div
+                className="lib-row"
+                key={c.label}
+                style={{ gridTemplateColumns: "1fr auto" }}
+              >
+                <span>{c.label}</span>
+                <strong>{c.value}</strong>
+              </div>
             ))}
-          </ul>
+          </div>
+        </AdminPanel>
+        <AdminPanel title="Recent uploads">
+          {recentUploads.length === 0 ? (
+            <p style={{ color: "var(--text-muted)" }}>No uploads yet.</p>
+          ) : (
+            recentUploads.map((u) => (
+              <div key={u.id} style={{ marginBottom: 10 }}>
+                <Link href="/admin/uploads" style={{ color: "var(--accent-cyan)" }}>
+                  {u.originalName}
+                </Link>{" "}
+                · {u.boardNumber} <StatusBadge status={u.status} />
+              </div>
+            ))
+          )}
         </AdminPanel>
       </div>
-    </>
-  );
-}
 
-function QueuePanel({
-  title,
-  href,
-  rows,
-}: {
-  title: string;
-  href: string;
-  rows: { id: string; label: string; status: string; href: string }[];
-}) {
-  return (
-    <AdminPanel
-      title={title}
-      actions={
-        <Link href={href} className="btn btn-success btn-sm">
-          View all
+      <AdminPanel title="Audit feed">
+        {recentAudit.length === 0 ? (
+          <p style={{ color: "var(--text-muted)" }}>No admin actions recorded yet.</p>
+        ) : (
+          recentAudit.map((a) => (
+            <div key={a.id} style={{ marginBottom: 10, fontSize: 14 }}>
+              <strong>{a.action}</strong> — {a.summary}
+              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                {new Date(a.createdAt).toLocaleString()}
+              </div>
+            </div>
+          ))
+        )}
+        <Link href="/admin/audit" className="btn btn-outline btn-sm" style={{ marginTop: 8 }}>
+          Full audit log
         </Link>
-      }
-    >
-      {rows.length === 0 ? (
-        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Queue clear.</p>
-      ) : (
-        <div className="admin-queue-list">
-          {rows.map((r) => (
-            <Link key={r.id} href={r.href} className="admin-queue-item">
-              <span>{r.label}</span>
-              <StatusBadge status={r.status} />
-            </Link>
-          ))}
-        </div>
-      )}
-    </AdminPanel>
+      </AdminPanel>
+    </>
   );
 }

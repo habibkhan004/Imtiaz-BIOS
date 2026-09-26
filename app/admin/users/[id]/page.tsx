@@ -1,28 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import {
-  ADMIN_PROFILE,
-  ADMIN_REQUESTS,
-  ADMIN_SUBSCRIPTIONS,
-  ADMIN_SUPPORT,
-  ADMIN_USERS,
-  REQUESTS_KEY,
-  SUBS_KEY,
-  SUPPORT_KEY,
-  USERS_KEY,
-  appendAudit,
-  getUser,
-  loadJson,
-  saveJson,
-  type AdminRequest,
-  type AdminSubscription,
-  type AdminSupportTicket,
-  type AdminUser,
-  type UserStatus,
-} from "../../../lib/admin-data";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import {
   AdminPageHeader,
   AdminPanel,
@@ -30,58 +10,101 @@ import {
   Toast,
 } from "../../../components/admin/ui";
 
+type ApiUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  clientRole?: string;
+  status: string;
+  phone?: string;
+  country?: string;
+  trialStartDate?: string;
+  trialEndDate?: string;
+  createdAt: string;
+};
+
 export default function AdminUserDetailPage() {
   const params = useParams<{ id: string }>();
-  const [user, setUser] = useState<AdminUser | null>(null);
-  const [sub, setSub] = useState<AdminSubscription | null>(null);
-  const [requests, setRequests] = useState<AdminRequest[]>([]);
-  const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
+  const router = useRouter();
+  const [user, setUser] = useState<ApiUser | null>(null);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
+  const [notFound, setNotFound] = useState(false);
 
-  const refresh = () => {
-    const list = loadJson(USERS_KEY, ADMIN_USERS);
-    const found = list.find((u) => u.id === params.id) ?? getUser(params.id) ?? null;
-    setUser(found);
-    if (!found) return;
-    const subs = loadJson(SUBS_KEY, ADMIN_SUBSCRIPTIONS);
-    setSub(subs.find((s) => s.userId === found.id) ?? null);
-    setRequests(
-      loadJson(REQUESTS_KEY, ADMIN_REQUESTS)
-        .filter((r) => r.customerEmail === found.email)
-        .slice(0, 5),
-    );
-    setTickets(
-      loadJson(SUPPORT_KEY, ADMIN_SUPPORT)
-        .filter((t) => t.customerEmail === found.email)
-        .slice(0, 5),
-    );
+  const flash = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2200);
   };
 
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users?limit=200`, {
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        flash(data.error || "Failed to load");
+        return;
+      }
+      const found = (data.items || []).find((u: ApiUser) => u.id === params.id);
+      if (!found) {
+        setNotFound(true);
+        setUser(null);
+        return;
+      }
+      setNotFound(false);
+      setUser(found);
+    } catch {
+      flash("Network error");
+    } finally {
+      setLoading(false);
+    }
   }, [params.id]);
 
-  const toggleStatus = () => {
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const toggleStatus = async () => {
     if (!user) return;
-    const list = loadJson(USERS_KEY, ADMIN_USERS);
-    const nextStatus: UserStatus = user.status === "Active" ? "Suspended" : "Active";
-    const next = list.map((u) =>
-      u.id === user.id ? { ...u, status: nextStatus } : u,
-    );
-    saveJson(USERS_KEY, next);
-    appendAudit({
-      actor: ADMIN_PROFILE.name,
-      action: nextStatus === "Suspended" ? "user.suspend" : "user.activate",
-      target: user.id,
-      detail: `${nextStatus} ${user.name}`,
+    const nextStatus = user.status === "Active" ? "Suspended" : "Active";
+    const res = await fetch("/api/admin/users", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: user.id, status: nextStatus }),
     });
-    setUser({ ...user, status: nextStatus });
-    setToast(`User ${nextStatus.toLowerCase()}`);
-    setTimeout(() => setToast(""), 2000);
+    const data = await res.json();
+    if (!res.ok) {
+      flash(data.error || "Update failed");
+      return;
+    }
+    flash(`User ${nextStatus.toLowerCase()}`);
+    load();
   };
 
-  if (!user) {
+  const onDelete = async () => {
+    if (!user) return;
+    if (!confirm(`Delete ${user.email}?`)) return;
+    const res = await fetch(`/api/admin/users?id=${encodeURIComponent(user.id)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      flash(data.error || "Delete failed");
+      return;
+    }
+    router.push("/admin/users");
+  };
+
+  if (loading) {
+    return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
+  }
+
+  if (notFound || !user) {
     return (
       <p style={{ color: "var(--text-muted)" }}>
         User not found. <Link href="/admin/users">Back</Link>
@@ -93,78 +116,46 @@ export default function AdminUserDetailPage() {
     <>
       <AdminPageHeader
         title={user.name}
-        description={`${user.email} · ${user.role}`}
+        description={`${user.email} · ${user.clientRole || user.role}`}
         actions={
-          <button
-            type="button"
-            className={`btn btn-sm ${user.status === "Active" ? "btn-danger" : "btn-success"}`}
-            onClick={toggleStatus}
-          >
-            {user.status === "Active" ? "Suspend" : "Activate"}
-          </button>
+          <div className="action-btns">
+            <button
+              type="button"
+              className={`btn btn-sm ${user.status === "Active" ? "btn-danger" : "btn-success"}`}
+              onClick={toggleStatus}
+            >
+              {user.status === "Active" ? "Suspend" : "Activate"}
+            </button>
+            <button type="button" className="btn btn-danger btn-sm" onClick={onDelete}>
+              Delete
+            </button>
+            <Link href="/admin/users" className="btn btn-outline btn-sm">
+              Back
+            </Link>
+          </div>
         }
       />
-      <AdminPanel title="Profile">
-        <p style={{ fontSize: 14 }}>
+
+      <AdminPanel title="Account">
+        <p>
           Status: <StatusBadge status={user.status} />
-          <br />
-          Role: <StatusBadge status={user.role} />
-          <br />
-          Company: <strong>{user.company ?? "—"}</strong>
-          <br />
-          Created: <strong>{user.createdAt}</strong>
         </p>
-        {sub ? (
-          <p style={{ marginTop: 12, fontSize: 14 }}>
-            Subscription:{" "}
-            <Link
-              href={`/admin/subscriptions/${sub.id}`}
-              style={{ color: "var(--accent-cyan)" }}
-            >
-              {sub.planName} ({sub.status})
-            </Link>
-          </p>
-        ) : (
-          <p style={{ marginTop: 12, fontSize: 14, color: "var(--text-muted)" }}>
-            No subscription on file.
-          </p>
-        )}
-        <div className="action-btns" style={{ marginTop: 16 }}>
-          <Link href="/admin/users" className="btn btn-outline btn-sm">
-            Back to users
-          </Link>
-        </div>
+        <p style={{ marginTop: 8 }}>
+          Role: <StatusBadge status={user.clientRole || user.role} />
+        </p>
+        <p style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 14 }}>
+          Phone: {user.phone || "—"} · Country: {user.country || "—"}
+        </p>
+        <p style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 14 }}>
+          Trial:{" "}
+          {user.trialStartDate
+            ? `${new Date(user.trialStartDate).toLocaleDateString()} → ${new Date(user.trialEndDate || "").toLocaleDateString()}`
+            : "—"}
+        </p>
+        <p style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 14 }}>
+          Created: {new Date(user.createdAt).toLocaleString()}
+        </p>
       </AdminPanel>
-      <div className="portal-grid-2">
-        <AdminPanel title="Recent requests">
-          {requests.length === 0 ? (
-            <p style={{ color: "var(--text-muted)" }}>None</p>
-          ) : (
-            requests.map((r) => (
-              <div key={r.id} style={{ marginBottom: 8, fontSize: 14 }}>
-                <Link href={`/admin/requests/${r.id}`} style={{ color: "var(--accent-cyan)" }}>
-                  {r.id}
-                </Link>{" "}
-                · {r.model} · <StatusBadge status={r.status} />
-              </div>
-            ))
-          )}
-        </AdminPanel>
-        <AdminPanel title="Recent support">
-          {tickets.length === 0 ? (
-            <p style={{ color: "var(--text-muted)" }}>None</p>
-          ) : (
-            tickets.map((t) => (
-              <div key={t.id} style={{ marginBottom: 8, fontSize: 14 }}>
-                <Link href={`/admin/support/${t.id}`} style={{ color: "var(--accent-cyan)" }}>
-                  {t.id}
-                </Link>{" "}
-                · {t.subject} · <StatusBadge status={t.status} />
-              </div>
-            ))
-          )}
-        </AdminPanel>
-      </div>
       <Toast message={toast} />
     </>
   );

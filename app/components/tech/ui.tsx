@@ -2,14 +2,23 @@ import Link from "next/link";
 import { BackButton } from "../BackButton";
 
 export function StatusBadge({ status }: { status: string }) {
-  const s = status.toLowerCase();
+  const s = status.toLowerCase().replace(/_/g, " ");
   let tone: "cyan" | "green" | "gold" | "danger" | "muted" = "muted";
-  if (["fulfilled", "verified", "resolved", "active"].includes(s)) tone = "green";
+  if (
+    ["fulfilled", "verified", "approved", "completed", "resolved", "active", "closed"].includes(
+      s,
+    )
+  )
+    tone = "green";
   else if (
-    ["pending", "queued", "open", "in review", "in progress"].includes(s)
+    ["pending", "queued", "open", "assigned", "in review", "in progress"].includes(s)
   )
     tone = "cyan";
-  else if (["waiting on customer", "needs changes", "expiring"].includes(s))
+  else if (
+    ["waiting on customer", "waiting customer", "needs changes", "needs info", "expiring"].includes(
+      s,
+    )
+  )
     tone = "gold";
   else if (["rejected", "failed"].includes(s)) tone = "danger";
 

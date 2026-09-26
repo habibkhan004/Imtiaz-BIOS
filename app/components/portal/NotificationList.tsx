@@ -1,130 +1,95 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { NOTIFICATIONS, type NotificationItem } from "../../lib/portal-data";
+import { useEffect, useState } from "react";
 
-const READ_KEY = "imtiaz-notif-read";
+type Note = {
+  id: string;
+  title: string;
+  body: string;
+  href?: string;
+  read: boolean;
+  createdAt: string;
+};
 
 export function NotificationList() {
-  const [items, setItems] = useState<NotificationItem[]>(NOTIFICATIONS);
-  const [filter, setFilter] = useState<"all" | "unread">("all");
-  const [readIds, setReadIds] = useState<string[]>([]);
+  const [items, setItems] = useState<Note[]>([]);
+  const [unread, setUnread] = useState(0);
+
+  const load = () => {
+    fetch("/api/notifications", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setItems(data.items || []);
+        setUnread(data.unread || 0);
+      });
+  };
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(READ_KEY);
-      if (raw) setReadIds(JSON.parse(raw) as string[]);
-    } catch {
-      /* ignore */
-    }
+    load();
   }, []);
 
-  const persist = (ids: string[]) => {
-    setReadIds(ids);
-    localStorage.setItem(READ_KEY, JSON.stringify(ids));
-  };
-
-  const visible = useMemo(() => {
-    return items.filter((n) => {
-      const isRead = n.read || readIds.includes(n.id);
-      if (filter === "unread") return !isRead;
-      return true;
+  const mark = async (id?: string, markAll?: boolean) => {
+    await fetch("/api/notifications", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(markAll ? { markAll: true } : { id }),
     });
-  }, [items, filter, readIds]);
-
-  const markRead = (id: string) => {
-    if (!readIds.includes(id)) persist([...readIds, id]);
-  };
-
-  const markAll = () => {
-    persist(Array.from(new Set([...readIds, ...items.map((n) => n.id)])));
+    load();
   };
 
   return (
     <div className="portal-panel">
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-          marginBottom: 12,
-        }}
-      >
-        <h2 style={{ margin: 0 }}>Inbox</h2>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            className={`btn btn-sm ${filter === "all" ? "btn-primary" : "btn-outline"}`}
-            onClick={() => setFilter("all")}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${filter === "unread" ? "btn-primary" : "btn-outline"}`}
-            onClick={() => setFilter("unread")}
-          >
-            Unread
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={markAll}>
-            Mark all read
-          </button>
-        </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+        <p style={{ color: "var(--text-muted)", margin: 0 }}>
+          {unread} unread
+        </p>
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          onClick={() => mark(undefined, true)}
+        >
+          Mark all read
+        </button>
       </div>
-      {visible.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No notifications.</p>
+      {items.length === 0 ? (
+        <p style={{ color: "var(--text-muted)" }}>No notifications yet.</p>
       ) : (
-        visible.map((n) => {
-          const isRead = n.read || readIds.includes(n.id);
-          return (
-            <Link
-              key={n.id}
-              href={n.href}
-              className={`notif-item${!isRead ? " unread" : ""}`}
-              onClick={() => markRead(n.id)}
-            >
-              <div style={{ fontSize: 22 }}>
-                {n.type === "request"
-                  ? "📁"
-                  : n.type === "support"
-                    ? "🛠️"
-                    : n.type === "upload"
-                      ? "📤"
-                      : n.type === "billing"
-                        ? "💳"
-                        : "🔔"}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{n.title}</div>
-                <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>{n.body}</div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontFamily: "var(--mono)",
-                    color: "var(--text-muted)",
-                    marginTop: 4,
-                  }}
-                >
-                  {n.time}
-                </div>
-              </div>
-              {!isRead ? (
+        items.map((n) => (
+          <div
+            key={n.id}
+            style={{
+              marginBottom: 14,
+              paddingBottom: 14,
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              opacity: n.read ? 0.7 : 1,
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>{n.title}</div>
+            <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>{n.body}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+              {new Date(n.createdAt).toLocaleString()}
+            </div>
+            <div className="action-btns" style={{ marginTop: 8 }}>
+              {!n.read ? (
                 <button
                   type="button"
                   className="btn btn-success btn-sm"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    markRead(n.id);
-                  }}
+                  onClick={() => mark(n.id)}
                 >
-                  Read
+                  Mark read
                 </button>
               ) : null}
-            </Link>
-          );
-        })
+              {n.href ? (
+                <Link href={n.href} className="btn btn-outline btn-sm">
+                  Open
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ))
       )}
     </div>
   );

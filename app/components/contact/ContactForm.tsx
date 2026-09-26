@@ -5,12 +5,14 @@ import { useSearchParams } from "next/navigation";
 
 export function ContactForm() {
   const searchParams = useSearchParams();
-  const [toast, setToast] = useState(false);
+  const [toast, setToast] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const [cName, setCName] = useState("");
+  const [cEmail, setCEmail] = useState("");
   const [cModel, setCModel] = useState("");
   const [cMsg, setCMsg] = useState("");
   const cMsgRef = useRef<HTMLTextAreaElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const model = searchParams.get("model") ?? sessionStorage.getItem("imtiaz-contact-model");
@@ -27,14 +29,44 @@ export function ContactForm() {
     }
   }, [searchParams]);
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setToast(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setToast(false), 4000);
-    setCName("");
-    setCModel("");
-    setCMsg("");
+    setError("");
+    setToast("");
+    if (!cName.trim() || !cEmail.trim() || !cMsg.trim()) {
+      setError("Name, email, and message are required.");
+      return;
+    }
+    setPending(true);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: cName.trim(),
+          email: cEmail.trim(),
+          subject: cModel.trim() ? `Board ${cModel.trim()}` : "Contact",
+          message: cModel.trim()
+            ? `Board/model: ${cModel.trim()}\n\n${cMsg.trim()}`
+            : cMsg.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Unable to send.");
+        return;
+      }
+      setToast(data.message || `Saved. Reference ${data.ticketNumber}`);
+      setCName("");
+      setCEmail("");
+      setCModel("");
+      setCMsg("");
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -43,9 +75,8 @@ export function ContactForm() {
         <span className="eyebrow">GET IN TOUCH</span>
         <h2>Open a request</h2>
         <p>
-          Send the board number, brand and what&apos;s happening with the unit. This
-          form stores the request in-session for this demo — wire it to email or a
-          ticketing backend later.
+          Send the board number, brand and what&apos;s happening with the unit. Your
+          message is stored as a support ticket with a reference number.
         </p>
         <div className="telegram-block">
           <span style={{ color: "var(--text-secondary)" }}>
@@ -81,6 +112,16 @@ export function ContactForm() {
           />
         </div>
         <div className="field">
+          <label htmlFor="cEmail">Email</label>
+          <input
+            type="email"
+            id="cEmail"
+            placeholder="you@example.com"
+            value={cEmail}
+            onChange={(e) => setCEmail(e.target.value)}
+          />
+        </div>
+        <div className="field">
           <label htmlFor="cModel">Board / model number</label>
           <input
             type="text"
@@ -101,13 +142,20 @@ export function ContactForm() {
             onChange={(e) => setCMsg(e.target.value)}
           />
         </div>
-        <button className="btn btn-primary" type="submit" style={{ width: "100%" }}>
-          📤 Send request
+        {error ? (
+          <div className="toast show error" style={{ marginBottom: 12 }}>
+            {error}
+          </div>
+        ) : null}
+        <button
+          className="btn btn-primary"
+          type="submit"
+          style={{ width: "100%" }}
+          disabled={pending}
+        >
+          {pending ? "Sending…" : "📤 Send request"}
         </button>
-        <div className={`toast${toast ? " show" : ""}`}>
-          ✅ Request captured for this session — connect this form to a real inbox to
-          receive it.
-        </div>
+        {toast ? <div className="toast show">{toast}</div> : null}
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>
           Or reach us on Telegram:{" "}
           <a

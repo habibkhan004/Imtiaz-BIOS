@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { writeAuth } from "../../lib/auth";
+import { roleFromApi, writeAuth } from "../../lib/auth";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -11,15 +11,18 @@ export function RegisterForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState("");
   const [terms, setTerms] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(false);
+  const [pending, setPending] = useState(false);
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     if (!name.trim() || !email.trim() || !password || !confirm) {
-      setError("Please fill in all fields.");
+      setError("Please fill in all required fields.");
       return;
     }
     if (!email.includes("@")) {
@@ -38,9 +41,38 @@ export function RegisterForm() {
       setError("Please accept the terms to continue.");
       return;
     }
-    writeAuth({ role: "customer", email: email.trim(), name: name.trim() });
-    setToast(true);
-    setTimeout(() => router.push("/portal"), 800);
+    setPending(true);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          phone: phone.trim() || undefined,
+          country: country.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Unable to create account.");
+        return;
+      }
+      writeAuth({
+        role: roleFromApi(data.user.role),
+        email: data.user.email,
+        name: data.user.name,
+        userId: data.user.id,
+      });
+      setToast(true);
+      setTimeout(() => router.push(data.redirectTo || "/portal"), 800);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -65,6 +97,28 @@ export function RegisterForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="email"
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="regPhone">Phone (optional)</label>
+        <input
+          id="regPhone"
+          type="tel"
+          placeholder="+1 …"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          autoComplete="tel"
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="regCountry">Country (optional)</label>
+        <input
+          id="regCountry"
+          type="text"
+          placeholder="Country"
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
+          autoComplete="country-name"
         />
       </div>
       <div className="field">
@@ -112,8 +166,13 @@ export function RegisterForm() {
           {error}
         </div>
       ) : null}
-      <button className="btn btn-primary" type="submit" style={{ width: "100%" }}>
-        Create account
+      <button
+        className="btn btn-primary"
+        type="submit"
+        style={{ width: "100%" }}
+        disabled={pending}
+      >
+        {pending ? "Creating…" : "Create account"}
       </button>
       <div className={`toast${toast ? " show" : ""}`}>
         ✅ Account created — opening your portal…

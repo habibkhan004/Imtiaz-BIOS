@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { clearAuth } from "../lib/auth";
+import { logoutEverywhere } from "../lib/auth";
 
 export function BellIcon({ size = 20 }: { size?: number }) {
   return (
@@ -110,8 +110,8 @@ export function TopbarUserCluster({
         <button
           type="button"
           className="logout-btn"
-          onClick={() => {
-            clearAuth();
+          onClick={async () => {
+            await logoutEverywhere();
             router.push("/");
           }}
         >

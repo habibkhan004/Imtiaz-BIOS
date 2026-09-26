@@ -3,10 +3,20 @@ import type { ReactNode } from "react";
 import { BackButton } from "../BackButton";
 
 export function StatusBadge({ status }: { status: string }) {
-  const s = status.toLowerCase();
+  const s = status.toLowerCase().replace(/_/g, " ");
   let tone: "cyan" | "green" | "gold" | "danger" | "muted" = "muted";
   if (
-    ["fulfilled", "verified", "paid", "resolved", "active", "admin"].includes(s)
+    [
+      "fulfilled",
+      "verified",
+      "approved",
+      "completed",
+      "paid",
+      "resolved",
+      "active",
+      "admin",
+      "closed",
+    ].includes(s)
   )
     tone = "green";
   else if (
@@ -14,6 +24,7 @@ export function StatusBadge({ status }: { status: string }) {
       "pending",
       "queued",
       "open",
+      "assigned",
       "in review",
       "in progress",
       "customer",
@@ -22,7 +33,14 @@ export function StatusBadge({ status }: { status: string }) {
   )
     tone = "cyan";
   else if (
-    ["waiting on customer", "needs changes", "expiring", "suspended"].includes(s)
+    [
+      "waiting on customer",
+      "waiting customer",
+      "needs changes",
+      "needs info",
+      "expiring",
+      "suspended",
+    ].includes(s)
   )
     tone = "gold";
   else if (["rejected", "failed", "refunded", "cancelled", "none"].includes(s))

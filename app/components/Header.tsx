@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearAuth, readAuth, type AuthSession } from "../lib/auth";
+import { logoutEverywhere, readAuth, type AuthSession } from "../lib/auth";
 import { LogoutIcon, TopbarUserCluster } from "./TopbarUserCluster";
 
 const NAV = [
@@ -81,8 +81,8 @@ export function Header() {
   const closeNav = () => setNavOpen(false);
   const links = user ? roleLinks(user) : null;
 
-  const onLogout = () => {
-    clearAuth();
+  const onLogout = async () => {
+    await logoutEverywhere();
     setUser(null);
     router.push("/");
   };

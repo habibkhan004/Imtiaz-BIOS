@@ -1,14 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
-import {
-  loadMessages,
-  saveMessages,
-  TECH_PROFILE,
-  type TechAssignedRequest,
-  type TechMessage,
-} from "../../lib/tech-data";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { TechPageHeader } from "./ui";
+
+type Msg = {
+  id: string;
+  senderId: string;
+  message: string;
+  createdAt: string;
+};
+
+type TicketInfo = {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  model?: string;
+  brand?: string;
+  status: string;
+};
 
 const QUICK = [
   "Need clearer board photo",
@@ -16,33 +27,74 @@ const QUICK = [
   "File ready in library",
 ] as const;
 
-export function MessageThread({ item }: { item: TechAssignedRequest }) {
-  const [messages, setMessages] = useState<TechMessage[]>([]);
+export function MessageThread() {
+  const params = useParams<{ id: string }>();
+  const id = params.id;
+  const [ticket, setTicket] = useState<TicketInfo | null>(null);
+  const [messages, setMessages] = useState<Msg[]>([]);
   const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [toast, setToast] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/requests/${id}`, {
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ticket) {
+        setError(data.error || "Ticket not found");
+        setTicket(null);
+        return;
+      }
+      setTicket({
+        id: data.ticket.id,
+        ticketNumber: data.ticket.ticketNumber,
+        subject: data.ticket.subject,
+        model: data.ticket.model || data.ticket.boardNumber,
+        brand: data.ticket.brand,
+        status: data.ticket.status,
+      });
+      setMessages(data.messages || []);
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    setMessages(loadMessages(item.id));
-  }, [item.id]);
+    load();
+  }, [load]);
 
-  const persist = (next: TechMessage[]) => {
-    setMessages(next);
-    saveMessages(item.id, next);
-  };
-
-  const send = (body: string) => {
-    if (!body.trim()) return;
-    const msg: TechMessage = {
-      id: `TM-${Date.now()}`,
-      requestId: item.id,
-      from: "technician",
-      text: body.trim(),
-      at: new Date().toISOString().slice(0, 16).replace("T", " "),
-    };
-    persist([...messages, msg]);
-    setText("");
-    setToast(true);
-    setTimeout(() => setToast(false), 1600);
+  const send = async (body: string) => {
+    if (!body.trim() || !ticket) return;
+    setPending(true);
+    try {
+      const res = await fetch(`/api/requests/${ticket.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: body.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Send failed");
+        return;
+      }
+      setText("");
+      setToast(true);
+      setTimeout(() => setToast(false), 1600);
+      await load();
+    } catch {
+      setError("Network error");
+    } finally {
+      setPending(false);
+    }
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -50,21 +102,38 @@ export function MessageThread({ item }: { item: TechAssignedRequest }) {
     send(text);
   };
 
+  if (loading) {
+    return <p style={{ color: "var(--text-muted)" }}>Loading thread…</p>;
+  }
+
+  if (!ticket) {
+    return (
+      <>
+        <TechPageHeader title="Messages" description={error || "Not found"} />
+        <Link href="/tech" className="btn btn-outline btn-sm">
+          Back to queue
+        </Link>
+      </>
+    );
+  }
+
   return (
-    <div>
+    <>
+      <TechPageHeader
+        title={`Messages · ${ticket.ticketNumber}`}
+        description="Live ticket thread with the customer."
+      />
       <div className="portal-panel" style={{ marginBottom: 16 }}>
-        <h2 style={{ marginBottom: 6 }}>
-          {item.customerName} · {item.id}
-        </h2>
+        <h2 style={{ marginBottom: 6 }}>{ticket.subject}</h2>
         <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-          {item.model} · {item.brand} · {item.customerEmail}
+          {ticket.model || "—"} · {ticket.brand || "—"} · {ticket.status}
         </p>
         <div className="action-btns" style={{ marginTop: 12 }}>
-          <Link href={`/tech/review/${item.id}`} className="btn btn-success btn-sm">
+          <Link href={`/tech/review/${ticket.id}`} className="btn btn-success btn-sm">
             Review
           </Link>
           <Link
-            href={`/tech/requests/${item.id}/status`}
+            href={`/tech/requests/${ticket.id}/status`}
             className="btn btn-gold btn-sm"
           >
             Status
@@ -74,82 +143,69 @@ export function MessageThread({ item }: { item: TechAssignedRequest }) {
 
       <div className="portal-panel">
         <h2>Thread</h2>
+        {error ? (
+          <p style={{ color: "var(--danger)", fontSize: 13, marginBottom: 12 }}>{error}</p>
+        ) : null}
         <div style={{ display: "grid", gap: 12, marginBottom: 20 }}>
           {messages.length === 0 ? (
             <p style={{ color: "var(--text-muted)" }}>No messages yet.</p>
           ) : (
-            messages.map((m) => {
-              const mine = m.from === "technician";
-              const system = m.from === "system";
-              return (
+            messages.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  padding: 12,
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--bg-card)",
+                }}
+              >
                 <div
-                  key={m.id}
                   style={{
-                    maxWidth: "85%",
-                    marginLeft: mine ? "auto" : 0,
-                    marginRight: mine ? 0 : "auto",
-                    padding: "12px 14px",
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--border-color)",
-                    background: system
-                      ? "var(--bg-surface-2)"
-                      : mine
-                        ? "var(--accent-cyan-soft)"
-                        : "var(--bg-card)",
+                    fontSize: 12,
+                    color: "var(--text-muted)",
+                    marginBottom: 6,
+                    fontFamily: "var(--mono)",
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontFamily: "var(--mono)",
-                      color: "var(--text-muted)",
-                      marginBottom: 6,
-                    }}
-                  >
-                    {system
-                      ? "System"
-                      : mine
-                        ? TECH_PROFILE.name
-                        : item.customerName}{" "}
-                    · {m.at}
-                  </div>
-                  <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{m.text}</div>
+                  {new Date(m.createdAt).toLocaleString()}
                 </div>
-              );
-            })
+                <div style={{ fontSize: 14 }}>{m.message}</div>
+              </div>
+            ))
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
           {QUICK.map((q) => (
             <button
               key={q}
               type="button"
               className="btn btn-outline btn-sm"
-              onClick={() => setText(q)}
+              disabled={pending}
+              onClick={() => send(q)}
             >
               {q}
             </button>
           ))}
         </div>
 
-        <form onSubmit={onSubmit} noValidate>
+        <form onSubmit={onSubmit}>
           <div className="field">
-            <label htmlFor="msg">Message</label>
+            <label htmlFor="msg">Reply</label>
             <textarea
               id="msg"
               rows={3}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Write to the customer…"
             />
           </div>
-          <button type="submit" className="btn btn-success btn-sm">
+          <button type="submit" className="btn btn-success btn-sm" disabled={pending}>
             Send
           </button>
-          <div className={`toast${toast ? " show" : ""}`}>✅ Message sent (demo)</div>
         </form>
+        <div className={`toast${toast ? " show" : ""}`}>Sent</div>
       </div>
-    </div>
+    </>
   );
 }

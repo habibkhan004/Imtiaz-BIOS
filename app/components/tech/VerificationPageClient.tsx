@@ -1,39 +1,95 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import {
-  loadVerificationItem,
-  TECH_CHANGE_EVENT,
-  type VerificationItem,
-} from "../../lib/tech-data";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { VerificationForm } from "./VerificationForm";
 import { StatusBadge, TechPageHeader } from "./ui";
 
-export function VerificationPageClient({
-  seed,
-  requestId,
-}: {
-  seed: VerificationItem;
-  requestId: string;
-}) {
-  const [item, setItem] = useState(seed);
+type LiveUpload = {
+  id: string;
+  originalName: string;
+  boardNumber: string;
+  modelNumber: string;
+  brandName?: string;
+  fileType: string;
+  sizeBytes: number;
+  status: string;
+  notes: string;
+  uploaderName?: string;
+  createdAt: string;
+  reviewNote?: string;
+};
+
+function formatSize(bytes: number) {
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+export function VerificationPageClient() {
+  const params = useParams<{ id: string }>();
+  const id = params.id;
+  const [item, setItem] = useState<LiveUpload | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/uploads/${id}`, { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Upload not found");
+        setItem(null);
+        return;
+      }
+      const u = data.upload;
+      // Enrich brand/uploader from admin list if available
+      const listRes = await fetch("/api/admin/uploads?limit=100", {
+        credentials: "include",
+      });
+      const listData = await listRes.json();
+      const enriched = (listData.items || []).find(
+        (x: { id: string }) => x.id === u.id,
+      );
+      setItem({
+        ...u,
+        brandName: enriched?.brandName,
+        uploaderName: enriched?.uploaderName,
+      });
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    const sync = () => {
-      const live = loadVerificationItem(seed.id) ?? loadVerificationItem(requestId);
-      if (live) setItem(live);
-    };
-    sync();
-    window.addEventListener(TECH_CHANGE_EVENT, sync);
-    return () => window.removeEventListener(TECH_CHANGE_EVENT, sync);
-  }, [seed.id, requestId]);
+    load();
+  }, [load]);
+
+  if (loading) {
+    return <p style={{ color: "var(--text-muted)" }}>Loading upload…</p>;
+  }
+
+  if (error || !item) {
+    return (
+      <>
+        <TechPageHeader title="Upload not found" description={error} />
+        <Link href="/tech?type=upload" className="btn btn-outline btn-sm">
+          Back to queue
+        </Link>
+      </>
+    );
+  }
 
   return (
     <>
       <TechPageHeader
-        title={`Verify ${item.filename}`}
-        description="Inspect metadata, hex stub, and mark the dump verified, needs changes, or rejected."
+        title={`Verify ${item.originalName}`}
+        description="Inspect metadata and mark the dump approved, needs info, or rejected."
       />
       <div className="portal-grid-2">
         <div>
@@ -47,52 +103,27 @@ export function VerificationPageClient({
                 marginBottom: 12,
               }}
             >
-              <h2 style={{ marginBottom: 0 }}>{item.filename}</h2>
+              <h2 style={{ marginBottom: 0 }}>{item.originalName}</h2>
               <StatusBadge status={item.status} />
             </div>
             <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-              {item.model} · {item.brand} · {item.type}
+              {item.boardNumber || item.modelNumber} · {item.brandName || "—"} ·{" "}
+              {item.fileType}
             </p>
             <p style={{ fontSize: 14, marginTop: 10 }}>
-              Size: <strong>{item.size}</strong>
+              Size: <strong>{formatSize(item.sizeBytes)}</strong>
               <br />
-              Uploaded by: <strong>{item.uploadedBy}</strong>
+              Uploaded by: <strong>{item.uploaderName || "—"}</strong>
               <br />
-              Submitted: <strong>{item.submittedAt}</strong>
-              <br />
-              Linked request:{" "}
-              <Link
-                href={`/tech/review/${item.requestId}`}
-                style={{ color: "var(--accent-cyan)" }}
-              >
-                {item.requestId}
-              </Link>
+              Submitted:{" "}
+              <strong>{new Date(item.createdAt).toLocaleString()}</strong>
             </p>
-          </div>
-          <div className="portal-panel">
-            <h2>Simulated preview</h2>
-            <pre
-              style={{
-                fontFamily: "var(--mono)",
-                fontSize: 12,
-                lineHeight: 1.6,
-                color: "var(--accent-cyan)",
-                background: "var(--bg-primary)",
-                border: "1px solid var(--border-color)",
-                borderRadius: "var(--radius-sm)",
-                padding: 14,
-                overflowX: "auto",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {item.hexStub}
-            </pre>
-            <p className="form-note" style={{ marginTop: 12 }}>
-              Demo hex stub only — not a real binary viewer.
-            </p>
+            {item.notes ? (
+              <p style={{ marginTop: 12, fontSize: 14 }}>{item.notes}</p>
+            ) : null}
           </div>
         </div>
-        <VerificationForm item={item} />
+        <VerificationForm upload={item} onDone={load} />
       </div>
     </>
   );

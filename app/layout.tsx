@@ -40,8 +40,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
     >
-      <body>{children}</body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
