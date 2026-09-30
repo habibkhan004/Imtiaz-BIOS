@@ -88,6 +88,36 @@ export const ALLOWED_MIME_DEFAULT = [
   "text/plain",
 ];
 
+/** Keep original format: .pdf → PDF MIME, .bin → octet-stream, etc. */
+export function contentTypeFromName(fileName: string): string {
+  const ext = path.extname(fileName || "").toLowerCase();
+  switch (ext) {
+    case ".pdf":
+      return "application/pdf";
+    case ".zip":
+      return "application/zip";
+    case ".rar":
+      return "application/x-rar-compressed";
+    case ".7z":
+      return "application/x-7z-compressed";
+    case ".txt":
+    case ".hex":
+      return "text/plain";
+    case ".bin":
+    case ".rom":
+    case ".bdv":
+    default:
+      return "application/octet-stream";
+  }
+}
+
+/** Prefer inline for viewable types (PDF); attachment otherwise. */
+export function contentDisposition(fileName: string): string {
+  const safe = (fileName || "download").replace(/"/g, "");
+  const ext = path.extname(safe).toLowerCase();
+  const mode = ext === ".pdf" || ext === ".txt" ? "inline" : "attachment";
+  return `${mode}; filename="${safe}"`;
+}
 export function validateUploadMeta(
   originalName: string,
   mimeType: string,

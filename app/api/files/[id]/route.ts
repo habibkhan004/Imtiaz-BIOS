@@ -31,6 +31,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
       ...file,
       brandName: brand?.name,
       categoryName: category?.name,
+      downloadUrl: `/api/files/${file.id}/download`,
     },
     versions,
     entitlement,
@@ -49,6 +50,27 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     body = await req.json();
   } catch {
     return jsonError("Invalid JSON body");
+  }
+
+  if (body.accessType !== undefined || body.price !== undefined) {
+    const dbCheck = await loadDb();
+    const existing = dbCheck.files.find((x) => x.id === id);
+    if (!existing) return jsonError("File not found", 404);
+    const nextAccess =
+      body.accessType === "paid" || body.accessType === "free"
+        ? body.accessType
+        : existing.accessType;
+    if (nextAccess === "paid") {
+      const nextPrice = Number(body.price !== undefined ? body.price : existing.price);
+      if (!(nextPrice > 0) || Number.isNaN(nextPrice)) {
+        return jsonError("Payment option requires a price greater than 0.", 400, "VALIDATION");
+      }
+      body.accessType = "paid";
+      body.price = nextPrice;
+    } else {
+      body.accessType = "free";
+      body.price = 0;
+    }
   }
 
   const file = await updateDb((db) => {

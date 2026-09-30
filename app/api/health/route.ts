@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDbStatus, loadDb } from "@/app/lib/server/db";
 
-/** Quick check: is Mongo connected and storing data? */
+/** Quick check: is MySQL connected and storing data? */
 export async function GET() {
   try {
     const db = await loadDb();

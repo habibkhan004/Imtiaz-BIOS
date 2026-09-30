@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "./BrandLogo";
 
 const PIN_COORDS = [
   { x: 80, y: 20, w: 6, h: 26 },
@@ -48,6 +49,11 @@ export function Hero() {
     <section className="hero">
       <div className="wrap hero-grid">
         <div className="hero-content">
+          <BrandLogo
+            className="logo hero-brand-logo"
+            subtitle="Advanced Repair Lab"
+            gradId="homeHeroLogoGrad"
+          />
           <span className="eyebrow">BIOS · SCHEMATIC · BOARDVIEW</span>
           <h1>
             Flash it right,
@@ -101,56 +107,52 @@ export function Hero() {
               {PIN_COORDS.map((pin, idx) => (
                 <rect
                   key={idx}
-                  className="pin"
+                  className={`pin${idx === activePin ? " is-active" : ""}`}
                   x={pin.x}
                   y={pin.y}
                   width={pin.w}
                   height={pin.h}
                   rx="2"
-                  fill={idx === activePin ? "#00d4ff" : "#2a4a6a"}
-                  opacity={idx === activePin ? 1 : 0.6}
                 />
               ))}
             </g>
             <rect
+              className="chip-body"
               x="60"
               y="60"
               width="180"
               height="180"
               rx="12"
-              fill="#0c1830"
-              stroke="#1a3050"
               strokeWidth="2"
             />
             <rect
+              className="chip-inner"
               x="90"
               y="90"
               width="120"
               height="120"
               rx="8"
-              fill="#0b1428"
-              stroke="#00d4ff"
               strokeWidth="1.6"
             />
-            <circle cx="105" cy="105" r="4" fill="#00d4ff" className="chip-pulse" />
+            <circle cx="105" cy="105" r="4" className="chip-pulse" />
             <text
+              className="chip-title"
               x="150"
               y="145"
               textAnchor="middle"
               fontFamily="JetBrains Mono, monospace"
               fontSize="14"
-              fill="#00d4ff"
               fontWeight="600"
             >
               IMTIAZ
             </text>
             <text
+              className="chip-sub"
               x="150"
               y="163"
               textAnchor="middle"
               fontFamily="JetBrains Mono, monospace"
               fontSize="9"
-              fill="#4a6a8a"
             >
               BIOS · SPI 25Q64
             </text>

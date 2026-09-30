@@ -53,20 +53,9 @@ export function assertCanDownload(
   if (file.status !== "published") {
     return { ok: false, reason: "not_published", message: "File is not available." };
   }
-  if (file.accessType === "free" || file.price <= 0) {
+  // Free → download; Payment (price > 0) → user must pay first
+  if (file.accessType === "free" || !(file.price > 0)) {
     return { ok: true, reason: "free" };
-  }
-  const settings = db.settings;
-  if (
-    isTrialActive(user, settings) &&
-    settings.introCoversAccessTypes.includes(file.accessType) &&
-    (settings.introCategoryIds.length === 0 ||
-      settings.introCategoryIds.includes(file.categoryId))
-  ) {
-    return { ok: true, reason: "trial" };
-  }
-  if (hasActiveSubscription(db, user.id)) {
-    return { ok: true, reason: "subscription" };
   }
   if (hasPaidPurchase(db, user.id, file.id)) {
     return { ok: true, reason: "purchase" };
@@ -74,6 +63,6 @@ export function assertCanDownload(
   return {
     ok: false,
     reason: "no_entitlement",
-    message: "Subscribe or purchase to download this file.",
+    message: "Pay the file price to unlock download.",
   };
 }

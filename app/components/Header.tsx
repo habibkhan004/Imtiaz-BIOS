@@ -4,12 +4,15 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { logoutEverywhere, readAuth, type AuthSession } from "../lib/auth";
+import { CART_EVENT, cartCount } from "../lib/cart";
+import { useTheme } from "../lib/theme";
+import { BrandLogo } from "./BrandLogo";
 import { LogoutIcon, TopbarUserCluster } from "./TopbarUserCluster";
 
 const NAV = [
   { href: "/", label: "Home" },
   { href: "/services", label: "Services" },
-  { href: "/library", label: "Library" },
+  { href: "/library", label: "Files" },
   { href: "/categories", label: "Categories" },
   { href: "/faq", label: "FAQ" },
   { href: "/contact", label: "Contact" },
@@ -52,17 +55,25 @@ function roleLinks(user: AuthSession) {
 export function Header() {
   const [navOpen, setNavOpen] = useState(false);
   const [user, setUser] = useState<AuthSession | null>(null);
+  const [count, setCount] = useState(0);
   const pathname = usePathname();
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    const sync = () => setUser(readAuth());
+    const sync = () => {
+      const auth = readAuth();
+      setUser(auth);
+      setCount(cartCount(auth?.userId));
+    };
     sync();
     window.addEventListener("imtiaz-auth-change", sync);
     window.addEventListener("storage", sync);
+    window.addEventListener(CART_EVENT, sync);
     return () => {
       window.removeEventListener("imtiaz-auth-change", sync);
       window.removeEventListener("storage", sync);
+      window.removeEventListener(CART_EVENT, sync);
     };
   }, []);
 
@@ -90,35 +101,13 @@ export function Header() {
   return (
     <header>
       <nav className="site-nav">
-        <Link href="/" className="logo nav-brand" onClick={closeNav}>
-          <svg className="logo-mark" viewBox="0 0 34 34" fill="none">
-            <rect
-              x="8"
-              y="8"
-              width="18"
-              height="18"
-              rx="3"
-              stroke="url(#logoGrad)"
-              strokeWidth="2"
-            />
-            <rect x="13" y="13" width="8" height="8" rx="2" fill="url(#logoGrad)" />
-            <path
-              d="M12 2V8M17 2V8M22 2V8M12 26V32M17 26V32M22 26V32M2 12H8M2 17H8M2 22H8M26 12H32M26 17H32M26 22H32"
-              stroke="#4a6a8a"
-              strokeWidth="1.4"
-            />
-            <defs>
-              <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#00d4ff" />
-                <stop offset="100%" stopColor="#0099cc" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <span>
-            <span className="logo-text">IMTIAZ BIOS</span>
-            <small>Advanced Repair Lab</small>
-          </span>
-        </Link>
+        <BrandLogo
+          href="/"
+          className="logo nav-brand"
+          subtitle="Advanced Repair Lab"
+          gradId="headerLogoGrad"
+          onClick={closeNav}
+        />
 
         <div className={`nav-links${navOpen ? " open" : ""}`} id="navLinks">
           {NAV.map((item) => (
@@ -152,6 +141,19 @@ export function Header() {
         </div>
 
         <div className="nav-cta">
+          <button
+            type="button"
+            className="theme-toggle"
+            aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            title={theme === "light" ? "Dark mode" : "Light mode"}
+            onClick={toggleTheme}
+          >
+            {theme === "light" ? "☾" : "☀"}
+          </button>
+          <Link href="/cart" className="nav-cart-link" onClick={closeNav} aria-label="Cart">
+            Cart
+            {count > 0 ? <span className="nav-cart-badge">{count}</span> : null}
+          </Link>
           {user && links ? (
             <>
               <TopbarUserCluster

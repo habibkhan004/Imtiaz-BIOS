@@ -1,44 +1,69 @@
-# Deploy topology (Phase 1)
+# Deploy notes — IMTIAZ BIOS
 
-## Current (monolithic Next.js)
+## Stack
 
-| Layer | Choice |
-|-------|--------|
-| App + API | Next.js App Router on one host (local `npm run dev` / Vercel) |
-| Metadata | JSON adapter → `.data/imtiaz-db.json` (swap to Mongo later) |
-| Binaries | Private disk → `.data/objects/` via `FileStorage` (swap to S3) |
-| Auth | HTTP-only signed session cookie (`AUTH_SECRET`) |
+- Next.js 16 App Router
+- Prisma ORM → **MySQL** (local via **XAMPP**; production any MySQL 8+)
+- Local file binaries under `FILE_STORAGE_ROOT` (default `.data/objects`)
+- Nodemailer for auth emails
 
-## Recommended production split
+## Local setup (XAMPP)
 
-1. **Frontend / App Router** — Vercel (or any Node host)
-2. **MongoDB** — Atlas replica set; set `MONGODB_URI` when Mongoose adapter is wired
-3. **Object storage** — S3-compatible bucket (private ACL); implement `put` / `getSignedUrl` / `delete` in `app/lib/server/file-storage.ts`
-4. **Secrets** — `AUTH_SECRET`, storage credentials, never commit `.env`
+1. Start **MySQL** in the XAMPP Control Panel (port **3306**).
+2. Open phpMyAdmin → create database **`Imtiaz-bios`** (utf8mb4), **or** run:
 
-## Env checklist
+   ```sql
+   CREATE DATABASE IF NOT EXISTS `Imtiaz-bios`
+     CHARACTER SET utf8mb4
+     COLLATE utf8mb4_unicode_ci;
+   ```
 
-Copy `.env.example` → `.env.local`:
+   (Use backticks — the database name contains a hyphen.)
 
-- `AUTH_SECRET` — long random string
-- `INTRO_DURATION_DAYS` — default 183
-- `FILE_STORAGE_ROOT` / `DATA_DB_PATH` — local demo paths
-- `CORS_ORIGINS` — production origins allowlist
-- `MONGODB_URI` — leave empty until Mongo adapter lands
-- `FEATURE_*` — Phase 2/3 flags (default off)
+3. Copy `.env.example` → `.env.local` and set the same URL in root `.env` for Prisma CLI:
 
-## Database
+   ```env
+   DATABASE_URL="mysql://root@127.0.0.1:3306/Imtiaz-bios"
+   ```
 
-Set `MONGODB_URI` in **`.env.local`** (gitignored). On first API hit the app seeds Atlas and persists all collections. Verify with:
+   If root has a password: `mysql://root:YOUR_PASSWORD@127.0.0.1:3306/Imtiaz-bios`
 
-```text
-GET http://localhost:3000/api/health
-```
+4. Install & migrate:
 
-Expect `"backend": "mongo"` and non-zero `counts`. In Atlas → Browse Collections → database `imtiaz_bios`.
+   ```bash
+   npm install
+   npx prisma generate
+   npx prisma migrate deploy
+   npx prisma db seed
+   npm run db:test
+   npm run dev
+   ```
 
-If Mongo is unreachable (IP not allowlisted in Network Access), the app logs a warning and falls back to the JSON file store.
+5. Verify: `GET /api/health` should show `"backend": "mysql"`.
 
-## Horizontal scale note
+## Environment
 
-Session cookies are HMAC-signed and stateless (no sticky sessions required). Replace JSON file store before multi-instance production — it is process-local and file-locked, not cluster-safe.
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Prisma MySQL connection (required) — DB name **`Imtiaz-bios`**, port **3306** |
+| `AUTH_SECRET` / `JWT_SECRET` | Session HMAC |
+| `FILE_STORAGE_ROOT` | Binary uploads on disk |
+| `SMTP_*` | Password reset / welcome email |
+| `APP_URL` | Links in emails |
+
+`MONGODB_URI` is **no longer used**.
+
+## Demo accounts (after seed)
+
+- admin@imtiazbios.local / Admin123!
+- tech@imtiazbios.local / Tech123!
+- user@imtiazbios.local / User123!
+
+## Data migration from Mongo/JSON
+
+If you still have Atlas or `.data/imtiaz-db.json` with real data:
+
+1. Export JSON (or dump Mongo collections).
+2. Keep the same UUID `id` fields.
+3. Import via a one-off script using Prisma `createMany` in FK order (users → categories/brands → files → …), **or** temporarily point an export at `loadDb` shape and call `persistDatabaseToMysql`.
+4. Do **not** run destructive `migrate reset` on production data without a backup.

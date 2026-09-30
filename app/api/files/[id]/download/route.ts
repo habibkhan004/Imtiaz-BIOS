@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadDb, now, randomUUID, updateDb } from "@/app/lib/server/db";
 import { assertCanDownload } from "@/app/lib/server/entitlement";
-import { fileStorage } from "@/app/lib/server/file-storage";
+import { fileStorage, contentTypeFromName, contentDisposition } from "@/app/lib/server/file-storage";
 import { jsonError, rateLimit, requireSession } from "@/app/lib/server/http";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -62,11 +62,13 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   if (hasBinary) {
     try {
       const buf = await fileStorage.read(file.storageKey);
+      // Serve as original type: PDF stays PDF, ZIP stays ZIP, etc.
+      const fileName = file.originalName || file.storageKey;
       return new NextResponse(new Uint8Array(buf), {
         status: 200,
         headers: {
-          "Content-Type": "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${file.originalName.replace(/"/g, "")}"`,
+          "Content-Type": contentTypeFromName(fileName),
+          "Content-Disposition": contentDisposition(fileName),
           "Cache-Control": "no-store",
           "X-Entitlement": ent.reason,
         },

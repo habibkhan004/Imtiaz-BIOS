@@ -1,0 +1,374 @@
+// IMTIAZ BIOS — MySQL via Prisma (XAMPP local / production MySQL)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Application user (USER | TECHNICIAN | ADMIN)
+model User {
+  id               String   @id @db.VarChar(36)
+  name             String   @db.VarChar(191)
+  email            String   @unique @db.VarChar(191)
+  passwordHash     String   @db.VarChar(255)
+  phone            String?  @db.VarChar(64)
+  country          String?  @db.VarChar(64)
+  role             String   @db.VarChar(32)
+  status           String   @db.VarChar(32)
+  trialStartDate   String   @db.VarChar(40)
+  trialEndDate     String   @db.VarChar(40)
+  subscriptionId   String?  @db.VarChar(36)
+  createdAt        String   @db.VarChar(40)
+  updatedAt        String   @db.VarChar(40)
+
+  uploadedFiles    FileAsset[]           @relation("FileUploader")
+  verifiedFiles    FileAsset[]           @relation("FileVerifier")
+  subscriptions    UserSubscription[]
+  uploads          UploadSubmission[]    @relation("UploadOwner")
+  reviews          UploadSubmission[]    @relation("UploadReviewer")
+  requests         FileRequest[]         @relation("RequestOwner")
+  assignedRequests FileRequest[]         @relation("RequestAssignee")
+  tickets          SupportTicket[]       @relation("TicketOwner")
+  assignedTickets  SupportTicket[]       @relation("TicketAssignee")
+  messages         TicketMessage[]
+  notifications    Notification[]
+  downloads        DownloadEvent[]
+  payments         Payment[]
+  resetTokens      PasswordResetToken[]
+  auditLogs        AuditLog[]
+  fileVersions     FileVersion[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model Category {
+  id             String   @id @db.VarChar(36)
+  name           String   @db.VarChar(191)
+  slug           String   @unique @db.VarChar(191)
+  description    String   @db.Text
+  parentCategory String?  @db.VarChar(191)
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      String   @db.VarChar(40)
+
+  files   FileAsset[]
+  uploads UploadSubmission[]
+}
+
+model Brand {
+  id          String  @id @db.VarChar(36)
+  name        String  @db.VarChar(191)
+  slug        String  @unique @db.VarChar(191)
+  description String? @db.Text
+  logo        String? @db.VarChar(512)
+  active      Boolean @default(true)
+  createdAt   String  @db.VarChar(40)
+
+  files   FileAsset[]
+  uploads UploadSubmission[]
+}
+
+model FileAsset {
+  id                 String  @id @db.VarChar(36)
+  name               String  @db.VarChar(255)
+  originalName       String  @db.VarChar(255)
+  storageKey         String  @db.VarChar(512)
+  categoryId         String  @db.VarChar(36)
+  brandId            String  @db.VarChar(36)
+  boardNumber        String  @db.VarChar(191)
+  modelNumber        String  @db.VarChar(191)
+  fileType           String  @db.VarChar(64)
+  version            String  @db.VarChar(64)
+  sizeBytes          Int
+  description        String  @db.Text
+  compatibility      String  @db.Text
+  /// JSON string array
+  tags               Json
+  verificationStatus String  @db.VarChar(32)
+  verificationNote   String? @db.Text
+  verifiedBy         String? @db.VarChar(36)
+  verifiedAt         String? @db.VarChar(40)
+  status             String  @db.VarChar(32)
+  accessType         String  @db.VarChar(16)
+  price              Float   @default(0)
+  uploaderId         String  @db.VarChar(36)
+  downloadCount      Int     @default(0)
+  publishedAt        String? @db.VarChar(40)
+  createdAt          String  @db.VarChar(40)
+  updatedAt          String  @db.VarChar(40)
+
+  category       Category           @relation(fields: [categoryId], references: [id])
+  brand          Brand              @relation(fields: [brandId], references: [id])
+  uploader       User               @relation("FileUploader", fields: [uploaderId], references: [id])
+  verifier       User?              @relation("FileVerifier", fields: [verifiedBy], references: [id])
+  versions       FileVersion[]
+  downloads      DownloadEvent[]
+  publishedFrom  UploadSubmission[] @relation("PublishedFile")
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([boardNumber])
+  @@index([modelNumber])
+  @@index([fileType])
+  @@index([status])
+  @@index([uploaderId])
+}
+
+model FileVersion {
+  id          String  @id @db.VarChar(36)
+  fileAssetId String  @db.VarChar(36)
+  version     String  @db.VarChar(64)
+  changelog   String? @db.Text
+  sizeBytes   Int
+  storageKey  String  @db.VarChar(512)
+  createdAt   String  @db.VarChar(40)
+  createdBy   String  @db.VarChar(36)
+
+  fileAsset FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+  creator   User      @relation(fields: [createdBy], references: [id])
+
+  @@index([fileAssetId])
+}
+
+model SubscriptionPlan {
+  id           String  @id @db.VarChar(36)
+  name         String  @db.VarChar(191)
+  durationDays Int
+  price        Float
+  /// JSON string array
+  features     Json
+  active       Boolean @default(true)
+  createdAt    String  @db.VarChar(40)
+
+  subscriptions UserSubscription[]
+}
+
+model UserSubscription {
+  id        String  @id @db.VarChar(36)
+  userId    String  @db.VarChar(36)
+  planId    String  @db.VarChar(36)
+  status    String  @db.VarChar(32)
+  startsAt  String  @db.VarChar(40)
+  endsAt    String  @db.VarChar(40)
+  paymentId String? @db.VarChar(36)
+  createdAt String  @db.VarChar(40)
+
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model UploadSubmission {
+  id              String  @id @db.VarChar(36)
+  userId          String  @db.VarChar(36)
+  originalName    String  @db.VarChar(255)
+  storageKey      String  @db.VarChar(512)
+  mimeType        String  @db.VarChar(128)
+  sizeBytes       Int
+  categoryId      String  @db.VarChar(36)
+  brandId         String  @db.VarChar(36)
+  boardNumber     String  @db.VarChar(191)
+  modelNumber     String  @db.VarChar(191)
+  fileType        String  @db.VarChar(64)
+  version         String  @db.VarChar(64)
+  description     String  @db.Text
+  notes           String  @db.Text
+  status          String  @db.VarChar(32)
+  reviewerId      String? @db.VarChar(36)
+  reviewNote      String? @db.Text
+  publishedFileId String? @db.VarChar(36)
+  createdAt       String  @db.VarChar(40)
+  updatedAt       String  @db.VarChar(40)
+
+  user          User       @relation("UploadOwner", fields: [userId], references: [id], onDelete: Cascade)
+  category      Category   @relation(fields: [categoryId], references: [id])
+  brand         Brand      @relation(fields: [brandId], references: [id])
+  reviewer      User?      @relation("UploadReviewer", fields: [reviewerId], references: [id])
+  publishedFile FileAsset? @relation("PublishedFile", fields: [publishedFileId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model FileRequest {
+  id            String @id @db.VarChar(36)
+  requestNumber String @unique @db.VarChar(64)
+  userId        String @db.VarChar(36)
+  boardModel    String @db.VarChar(191)
+  brand         String @db.VarChar(191)
+  typeNeeded    String @db.VarChar(64)
+  description   String @db.Text
+  /// JSON string array
+  attachments   Json
+  status        String @db.VarChar(32)
+  assigneeId    String? @db.VarChar(36)
+  createdAt     String @db.VarChar(40)
+  updatedAt     String @db.VarChar(40)
+
+  user     User  @relation("RequestOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assignee User? @relation("RequestAssignee", fields: [assigneeId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model SupportTicket {
+  id                String  @id @db.VarChar(36)
+  ticketNumber      String  @unique @db.VarChar(64)
+  type              String  @db.VarChar(32)
+  userId            String? @db.VarChar(36)
+  subject           String  @db.VarChar(255)
+  brand             String? @db.VarChar(191)
+  model             String? @db.VarChar(191)
+  boardNumber       String? @db.VarChar(191)
+  serviceIdentifier String? @db.VarChar(191)
+  symptoms          String? @db.Text
+  description       String  @db.Text
+  priority          String  @db.VarChar(32)
+  status            String  @db.VarChar(32)
+  assigneeId        String? @db.VarChar(36)
+  ownershipAck      Boolean?
+  /// JSON string array
+  attachments       Json
+  createdAt         String  @db.VarChar(40)
+  updatedAt         String  @db.VarChar(40)
+
+  user     User?           @relation("TicketOwner", fields: [userId], references: [id])
+  assignee User?           @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  messages TicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([priority])
+}
+
+model TicketMessage {
+  id         String  @id @db.VarChar(36)
+  ticketId   String  @db.VarChar(36)
+  senderId   String  @db.VarChar(36)
+  message    String  @db.Text
+  attachment String? @db.VarChar(512)
+  createdAt  String  @db.VarChar(40)
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender User          @relation(fields: [senderId], references: [id])
+
+  @@index([ticketId])
+}
+
+model Notification {
+  id        String  @id @db.VarChar(36)
+  userId    String  @db.VarChar(36)
+  type      String  @db.VarChar(64)
+  title     String  @db.VarChar(255)
+  body      String  @db.Text
+  href      String? @db.VarChar(512)
+  read      Boolean @default(false)
+  createdAt String  @db.VarChar(40)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+}
+
+model DownloadEvent {
+  id        String  @id @db.VarChar(36)
+  userId    String  @db.VarChar(36)
+  fileId    String  @db.VarChar(36)
+  versionId String? @db.VarChar(36)
+  at        String  @db.VarChar(40)
+  ip        String? @db.VarChar(64)
+  ua        String? @db.Text
+  result    String  @db.VarChar(32)
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([fileId])
+}
+
+model Payment {
+  id            String @id @db.VarChar(36)
+  userId        String @db.VarChar(36)
+  amount        Float
+  currency      String @db.VarChar(8)
+  paymentMethod String @db.VarChar(64)
+  transactionId String @db.VarChar(191)
+  status        String @db.VarChar(32)
+  purpose       String @db.VarChar(191)
+  createdAt     String @db.VarChar(40)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model ServiceItem {
+  id          String  @id @db.VarChar(36)
+  name        String  @db.VarChar(191)
+  description String  @db.Text
+  price       Float
+  icon        String  @db.VarChar(32)
+  active      Boolean @default(true)
+  featured    Boolean @default(false)
+  createdAt   String  @db.VarChar(40)
+  updatedAt   String  @db.VarChar(40)
+}
+
+model PasswordResetToken {
+  id        String  @id @db.VarChar(36)
+  userId    String  @db.VarChar(36)
+  tokenHash String  @unique @db.VarChar(128)
+  expiresAt String  @db.VarChar(40)
+  usedAt    String? @db.VarChar(40)
+  createdAt String  @db.VarChar(40)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String  @id @db.VarChar(36)
+  /// Nullable so system/anonymous events (e.g. failed login) can be stored
+  actorId    String? @db.VarChar(36)
+  action     String  @db.VarChar(64)
+  targetType String  @db.VarChar(64)
+  targetId   String  @db.VarChar(191)
+  summary    String  @db.Text
+  before     String? @db.Text
+  after      String? @db.Text
+  createdAt  String  @db.VarChar(40)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+/// Singleton platform settings (id = "platform")
+model PlatformSettings {
+  id                     String @id @db.VarChar(32) @default("platform")
+  introEnabled           Boolean @default(true)
+  introDurationDays      Int     @default(183)
+  /// JSON AccessType[]
+  introCoversAccessTypes Json
+  /// JSON string[] category ids
+  introCategoryIds       Json
+  maxUploadBytes         Int
+  /// JSON string[]
+  allowedExtensions      Json
+  /// JSON string[]
+  allowedMimeTypes       Json
+}

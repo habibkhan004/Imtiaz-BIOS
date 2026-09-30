@@ -1,12 +1,16 @@
 import Link from "next/link";
+import { BrandLogo } from "./BrandLogo";
 
 export function Footer() {
   return (
     <footer>
       <div className="wrap footer-row">
-        <span className="logo">
-          <span className="logo-text">IMTIAZ BIOS</span>
-        </span>
+        <BrandLogo
+          href="/"
+          className="logo"
+          gradId="footerLogoGrad"
+          showMark
+        />
         <div className="footer-links">
           <Link href="/">Home</Link>
           <Link href="/services">Services</Link>
