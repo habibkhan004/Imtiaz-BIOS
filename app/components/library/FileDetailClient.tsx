@@ -46,6 +46,7 @@ export function FileDetailClient({
   const [user, setUser] = useState<AuthSession | null>(null);
   const [toast, setToast] = useState("");
   const [meta, setMeta] = useState<FileMeta | null>(null);
+  const [showCartLink, setShowCartLink] = useState(false);
   const category = CATEGORIES.find((c) => c.slug === file.category);
   const related = LIBRARY_FILES.filter(
     (f) =>
@@ -99,10 +100,14 @@ export function FileDetailClient({
     ? requestPath
     : `/login?next=${encodeURIComponent(requestPath)}`;
   const fileKey = apiFileId || file.id;
-  const price = Number(meta?.price ?? 0);
-  const isPaid = price > 0 || meta?.accessType === "paid";
+  const price = Number(meta?.price ?? file.price ?? 0);
+  const isPaid =
+    price > 0 ||
+    meta?.accessType === "paid" ||
+    file.accessType === "paid";
   const entitled = Boolean(meta?.entitlement?.ok);
-  const paidBlocked = Boolean(meta && isPaid && meta.entitlement && !meta.entitlement.ok);
+  /** Paid file not yet unlocked — show cart / pay CTAs */
+  const paidBlocked = isPaid && !entitled;
   const description = meta?.description || file.description || "";
   const brand = meta?.brandName || file.brand;
   const version = meta?.version;
@@ -173,6 +178,10 @@ export function FileDetailClient({
 
   const onAddToCart = () => {
     if (!isPaid) return;
+    if (!loggedIn || !user) {
+      router.push(loginNext);
+      return;
+    }
     const result = addToCart(
       {
         fileId: fileKey,
@@ -183,9 +192,15 @@ export function FileDetailClient({
         price,
         description,
       },
-      user?.userId,
+      user.userId,
     );
-    flash(result.ok ? "Added to cart" : result.reason || "Already in cart");
+    if (result.ok) {
+      setShowCartLink(true);
+      flash("Added to cart");
+    } else {
+      flash(result.reason || "Already in cart");
+      if (result.reason === "Already in cart") setShowCartLink(true);
+    }
   };
 
   const checkoutHref = loggedIn
@@ -301,6 +316,11 @@ export function FileDetailClient({
                     Sign in first
                   </Link>
                 ) : null}
+                {showCartLink && loggedIn ? (
+                  <Link href="/cart" className="btn btn-ghost">
+                    View cart
+                  </Link>
+                ) : null}
                 <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
                   {meta?.entitlement && "message" in meta.entitlement
                     ? meta.entitlement.message
@@ -318,9 +338,6 @@ export function FileDetailClient({
             )}
             <Link href={requestHref} className="btn btn-ghost">
               Request variant
-            </Link>
-            <Link href="/cart" className="btn btn-ghost">
-              View cart
             </Link>
             <Link href="/library" className="btn btn-ghost">
               Back to library

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FloatingContactButtons } from "./FloatingContactButtons";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
 import { Loader } from "./Loader";
@@ -11,8 +12,11 @@ export function SiteShell({ children }: { children: ReactNode }) {
       <Loader />
       <Particles />
       <Header />
-      <main id="top">{children}</main>
+      <main id="top" className="site-main">
+        {children}
+      </main>
       <Footer />
+      <FloatingContactButtons />
       <ScrollTop />
     </>
   );

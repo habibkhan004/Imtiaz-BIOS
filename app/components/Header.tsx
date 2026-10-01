@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logoutEverywhere, readAuth, type AuthSession } from "../lib/auth";
 import { CART_EVENT, cartCount } from "../lib/cart";
+import { SERVICES } from "../lib/site-data";
 import { useTheme } from "../lib/theme";
 import { BrandLogo } from "./BrandLogo";
 import { LogoutIcon, TopbarUserCluster } from "./TopbarUserCluster";
 
 const NAV = [
   { href: "/", label: "Home" },
-  { href: "/services", label: "Services" },
   { href: "/library", label: "Files" },
   { href: "/categories", label: "Categories" },
   { href: "/faq", label: "FAQ" },
@@ -54,11 +54,13 @@ function roleLinks(user: AuthSession) {
 
 export function Header() {
   const [navOpen, setNavOpen] = useState(false);
+  const [servicesOpen, setServicesOpen] = useState(false);
   const [user, setUser] = useState<AuthSession | null>(null);
   const [count, setCount] = useState(0);
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
+  const servicesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -79,7 +81,10 @@ export function Header() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setNavOpen(false);
+      if (e.key === "Escape") {
+        setNavOpen(false);
+        setServicesOpen(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -87,10 +92,31 @@ export function Header() {
 
   useEffect(() => {
     setNavOpen(false);
+    setServicesOpen(false);
   }, [pathname]);
 
-  const closeNav = () => setNavOpen(false);
+  useEffect(() => {
+    document.body.classList.toggle("nav-open", navOpen);
+    return () => document.body.classList.remove("nav-open");
+  }, [navOpen]);
+
+  useEffect(() => {
+    if (!servicesOpen) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!servicesRef.current?.contains(e.target as Node)) {
+        setServicesOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [servicesOpen]);
+
+  const closeNav = () => {
+    setNavOpen(false);
+    setServicesOpen(false);
+  };
   const links = user ? roleLinks(user) : null;
+  const servicesActive = isActive(pathname, "/services");
 
   const onLogout = async () => {
     await logoutEverywhere();
@@ -110,7 +136,62 @@ export function Header() {
         />
 
         <div className={`nav-links${navOpen ? " open" : ""}`} id="navLinks">
-          {NAV.map((item) => (
+          <Link
+            href="/"
+            onClick={closeNav}
+            style={
+              isActive(pathname, "/")
+                ? { color: "var(--accent-cyan)" }
+                : undefined
+            }
+          >
+            Home
+          </Link>
+
+          <div
+            className={`nav-dropdown${servicesOpen ? " open" : ""}`}
+            ref={servicesRef}
+          >
+            <button
+              type="button"
+              className="nav-dropdown-trigger"
+              aria-expanded={servicesOpen}
+              aria-haspopup="true"
+              style={servicesActive ? { color: "var(--accent-cyan)" } : undefined}
+              onClick={() => setServicesOpen((o) => !o)}
+            >
+              Services
+              <span className="nav-dropdown-caret" aria-hidden>
+                ▾
+              </span>
+            </button>
+            <div className="nav-dropdown-menu" role="menu">
+              {SERVICES.map((s) => (
+                <Link
+                  key={s.slug}
+                  href={`/services/${s.slug}`}
+                  role="menuitem"
+                  onClick={closeNav}
+                  className={
+                    pathname === `/services/${s.slug}` ? "is-active" : undefined
+                  }
+                >
+                  <span aria-hidden>{s.icon}</span>
+                  {s.title}
+                </Link>
+              ))}
+              <Link
+                href="/services"
+                role="menuitem"
+                className="nav-dropdown-all"
+                onClick={closeNav}
+              >
+                View all services →
+              </Link>
+            </div>
+          </div>
+
+          {NAV.filter((item) => item.href !== "/").map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -129,15 +210,6 @@ export function Header() {
               {links.consoleLabel}
             </Link>
           ) : null}
-          <a
-            href="https://t.me/IMTIAZBIOS1"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="telegram-link"
-            onClick={closeNav}
-          >
-            📨 Telegram
-          </a>
         </div>
 
         <div className="nav-cta">
@@ -170,7 +242,11 @@ export function Header() {
             </>
           ) : (
             <>
-              <Link href="/library" className="btn btn-outline btn-sm" onClick={closeNav}>
+              <Link
+                href="/library"
+                className="btn btn-outline btn-sm nav-browse-btn"
+                onClick={closeNav}
+              >
                 Browse
               </Link>
               <Link href="/login" className="btn btn-primary btn-sm" onClick={closeNav}>

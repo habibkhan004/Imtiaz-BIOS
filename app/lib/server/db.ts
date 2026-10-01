@@ -17,7 +17,7 @@ import { loadDatabaseFromMysql, persistDatabaseToMysql } from "./prisma-store";
 
 let memory: Database | null = null;
 let writeChain: Promise<void> = Promise.resolve();
-let backend: "mysql" | null = null;
+let backend: "mysql" | "memory" | null = null;
 
 function slugify(s: string): string {
   return s
@@ -244,23 +244,36 @@ export async function loadDb(): Promise<Database> {
   if (memory) return memory;
 
   if (!process.env.DATABASE_URL?.trim()) {
-    throw new Error(
-      "DATABASE_URL is not set. Add mysql://root@127.0.0.1:3306/Imtiaz-bios to .env.local (XAMPP MySQL).",
+    console.warn(
+      "[db] DATABASE_URL is not set — using in-memory demo data. Add mysql://root@127.0.0.1:3306/Imtiaz-bios to .env.local when MySQL is available.",
     );
-  }
-
-  backend = "mysql";
-  const existing = await loadDatabaseFromMysql();
-  if (existing) {
-    memory = existing;
-    console.info("[db] Connected to MySQL via Prisma — loaded existing data");
+    backend = "memory";
+    memory = await seed();
     return memory;
   }
 
-  memory = await seed();
-  await persistDatabaseToMysql(memory);
-  console.info("[db] Connected to MySQL via Prisma — seeded initial data");
-  return memory;
+  try {
+    backend = "mysql";
+    const existing = await loadDatabaseFromMysql();
+    if (existing) {
+      memory = existing;
+      console.info("[db] Connected to MySQL via Prisma — loaded existing data");
+      return memory;
+    }
+
+    memory = await seed();
+    await persistDatabaseToMysql(memory);
+    console.info("[db] Connected to MySQL via Prisma — seeded initial data");
+    return memory;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[db] MySQL unreachable (${message}). Falling back to in-memory demo data. Start XAMPP/MySQL on 127.0.0.1:3306 and restart the dev server to use the real database.`,
+    );
+    backend = "memory";
+    memory = await seed();
+    return memory;
+  }
 }
 
 export async function updateDb<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
@@ -268,7 +281,16 @@ export async function updateDb<T>(fn: (db: Database) => T | Promise<T>): Promise
     const db = await loadDb();
     const result = await fn(db);
     memory = db;
-    await persistDatabaseToMysql(db);
+    if (backend === "mysql") {
+      try {
+        await persistDatabaseToMysql(db);
+      } catch (err) {
+        console.warn(
+          "[db] Failed to persist to MySQL; keeping in-memory changes only.",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
     return result;
   });
   writeChain = run.then(
@@ -285,7 +307,7 @@ export async function reloadDb(): Promise<Database> {
   return loadDb();
 }
 
-export function getDbBackend(): "mysql" | "uninitialized" {
+export function getDbBackend(): "mysql" | "memory" | "uninitialized" {
   return backend ?? "uninitialized";
 }
 

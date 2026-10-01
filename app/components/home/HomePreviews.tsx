@@ -21,12 +21,16 @@ export function HomeServicesPreview() {
         </div>
         <div className="services-grid">
           {SERVICES.map((s) => (
-            <div className="service-card reveal" key={s.title}>
+            <Link
+              href={`/services/${s.slug}`}
+              className="service-card reveal service-card-link"
+              key={s.slug}
+            >
               <div className="service-icon">{s.icon}</div>
               <h3>{s.title}</h3>
               <p>{s.desc}</p>
               <span className="price-tag">{s.price}</span>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
