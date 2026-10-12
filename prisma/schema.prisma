@@ -325,6 +325,22 @@ model ServiceItem {
   updatedAt   String  @db.VarChar(40)
 }
 
+/// Public client feedback / testimonials
+model Testimonial {
+  id             String  @id @db.VarChar(36)
+  name           String  @db.VarChar(191)
+  roleOrCompany  String  @db.VarChar(191)
+  quote          String  @db.Text
+  rating         Int     @default(5)
+  active         Boolean @default(true)
+  sortOrder      Int     @default(0)
+  createdAt      String  @db.VarChar(40)
+  updatedAt      String  @db.VarChar(40)
+
+  @@index([active])
+  @@index([sortOrder])
+}
+
 model PasswordResetToken {
   id        String  @id @db.VarChar(36)
   userId    String  @db.VarChar(36)

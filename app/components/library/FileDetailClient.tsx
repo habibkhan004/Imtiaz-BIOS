@@ -6,11 +6,17 @@ import { useEffect, useState } from "react";
 import { readAuth, type AuthSession } from "../../lib/auth";
 import { addToCart } from "../../lib/cart";
 import { recordPortalDownload } from "../../lib/portal-data";
+import {
+  downloadFileName,
+  fileFormatFromName,
+} from "../../lib/file-format";
 import type { LibraryFile } from "../../lib/site-data";
 import { CATEGORIES, LIBRARY_FILES } from "../../lib/site-data";
 
 type FileMeta = {
   name?: string;
+  originalName?: string;
+  storageKey?: string;
   accessType?: string;
   price?: number;
   verificationStatus?: string;
@@ -74,6 +80,8 @@ export function FileDetailClient({
         if (!data?.file) return;
         setMeta({
           name: data.file.name,
+          originalName: data.file.originalName,
+          storageKey: data.file.storageKey,
           accessType: data.file.accessType,
           price: data.file.price,
           verificationStatus: data.file.verificationStatus,
@@ -114,6 +122,11 @@ export function FileDetailClient({
   const sizeLabel = formatSize(meta?.sizeBytes) || file.size;
   const verified =
     file.verified || meta?.verificationStatus === "verified";
+  const format = fileFormatFromName(meta?.originalName, meta?.storageKey);
+  const saveAs = downloadFileName(
+    meta?.originalName,
+    meta?.modelNumber || file.model || "download",
+  );
 
   const onDownload = async () => {
     if (!loggedIn) {
@@ -142,7 +155,11 @@ export function FileDetailClient({
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${file.model}.bin`;
+        const cd = res.headers.get("Content-Disposition") || "";
+        const match = /filename\*?=(?:UTF-8'')?["']?([^"';]+)/i.exec(cd);
+        a.download = match?.[1]
+          ? decodeURIComponent(match[1])
+          : saveAs;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -168,7 +185,7 @@ export function FileDetailClient({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${file.model}.bin`;
+    a.download = saveAs;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -224,6 +241,9 @@ export function FileDetailClient({
       <div className="product-detail reveal">
         <div className="product-main">
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            <span className={`file-format-badge tone-${format.tone}`}>
+              {format.label}
+            </span>
             <span className="tag tag-brand">{brand}</span>
             {verified ? (
               <span className="tag tag-verified">✓ verified</span>
@@ -249,8 +269,16 @@ export function FileDetailClient({
               <strong>{meta?.boardNumber || "—"}</strong>
             </div>
             <div className="product-meta-item">
-              <span>Type</span>
+              <span>Content type</span>
               <strong>{meta?.fileType || file.type}</strong>
+            </div>
+            <div className="product-meta-item">
+              <span>File format</span>
+              <strong>
+                <span className={`file-format-badge tone-${format.tone}`}>
+                  {format.label}
+                </span>
+              </strong>
             </div>
             <div className="product-meta-item">
               <span>Version</span>
@@ -264,6 +292,12 @@ export function FileDetailClient({
               <span>Category</span>
               <strong>{meta?.categoryName || category?.name || file.category}</strong>
             </div>
+            {meta?.originalName ? (
+              <div className="product-meta-item">
+                <span>Filename</span>
+                <strong className="file-original-name">{meta.originalName}</strong>
+              </div>
+            ) : null}
           </div>
 
           {description ? (
@@ -293,6 +327,12 @@ export function FileDetailClient({
 
         <aside className="product-buy">
           <span className="eyebrow">PURCHASE</span>
+          <div className="product-buy-format">
+            <span className={`file-format-badge tone-${format.tone} is-lg`}>
+              {format.label}
+            </span>
+            <span className="product-buy-format-label">File format</span>
+          </div>
           <div className="product-price">
             {isPaid ? `$${price.toFixed(2)}` : "Free"}
           </div>

@@ -15,6 +15,7 @@ import type {
   ServiceItem,
   SubscriptionPlan,
   SupportTicket,
+  Testimonial,
   TicketMessage,
   UploadSubmission,
   User,
@@ -196,6 +197,7 @@ export async function loadDatabaseFromMysql(): Promise<Database | null> {
     downloads,
     payments,
     services,
+    testimonials,
     resetTokens,
     auditLogs,
   ] = await Promise.all([
@@ -214,6 +216,7 @@ export async function loadDatabaseFromMysql(): Promise<Database | null> {
     prisma.downloadEvent.findMany(),
     prisma.payment.findMany(),
     prisma.serviceItem.findMany(),
+    prisma.testimonial.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.passwordResetToken.findMany(),
     prisma.auditLog.findMany({
       orderBy: { createdAt: "desc" },
@@ -393,6 +396,19 @@ export async function loadDatabaseFromMysql(): Promise<Database | null> {
         updatedAt: r.updatedAt,
       }),
     ),
+    testimonials: testimonials.map(
+      (r): Testimonial => ({
+        id: r.id,
+        name: r.name,
+        roleOrCompany: r.roleOrCompany,
+        quote: r.quote,
+        rating: r.rating,
+        active: r.active,
+        sortOrder: r.sortOrder,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      }),
+    ),
     resetTokens: resetTokens.map(
       (r): PasswordResetToken => ({
         id: r.id,
@@ -444,6 +460,7 @@ export async function persistDatabaseToMysql(db: Database): Promise<void> {
       await tx.fileAsset.deleteMany();
       await tx.subscriptionPlan.deleteMany();
       await tx.serviceItem.deleteMany();
+      await tx.testimonial.deleteMany();
       await tx.category.deleteMany();
       await tx.brand.deleteMany();
       await tx.user.deleteMany();
@@ -523,6 +540,22 @@ export async function persistDatabaseToMysql(db: Database): Promise<void> {
             featured: s.featured,
             createdAt: s.createdAt,
             updatedAt: s.updatedAt,
+          })),
+        });
+      }
+
+      if (db.testimonials.length) {
+        await tx.testimonial.createMany({
+          data: db.testimonials.map((t) => ({
+            id: t.id,
+            name: t.name,
+            roleOrCompany: t.roleOrCompany,
+            quote: t.quote,
+            rating: t.rating,
+            active: t.active,
+            sortOrder: t.sortOrder,
+            createdAt: t.createdAt,
+            updatedAt: t.updatedAt,
           })),
         });
       }

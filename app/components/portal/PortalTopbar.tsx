@@ -19,16 +19,18 @@ export function PortalTopbar({
 
   return (
     <div className="portal-topbar admin-topbar">
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      <div className="topbar-lead">
         <button type="button" className="portal-menu-btn" onClick={onMenu}>
           ☰
         </button>
-        <div style={{ minWidth: 0 }}>
+        <div className="topbar-title-block">
           <div className="admin-topbar-kicker">Customer portal</div>
-          <div className="admin-topbar-title">{title}</div>
+          <div className="admin-topbar-title" title={title}>
+            {title}
+          </div>
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="topbar-actions">
         <button
           type="button"
           className="theme-toggle"

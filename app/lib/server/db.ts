@@ -8,8 +8,10 @@ import type {
   Role,
   ServiceItem,
   SubscriptionPlan,
+  Testimonial,
   User,
 } from "../domain/types";
+import { TESTIMONIALS } from "../site-data";
 import { hashPassword } from "./password";
 import { ALLOWED_EXTENSIONS_DEFAULT, ALLOWED_MIME_DEFAULT } from "./file-storage";
 import { prisma } from "./prisma";
@@ -218,6 +220,18 @@ async function seed(): Promise<Database> {
     allowedMimeTypes: ALLOWED_MIME_DEFAULT,
   };
 
+  const testimonials: Testimonial[] = TESTIMONIALS.map((t, i) => ({
+    id: randomUUID(),
+    name: t.author,
+    roleOrCompany: t.role,
+    quote: t.quote,
+    rating: 5,
+    active: true,
+    sortOrder: i + 1,
+    createdAt: ts,
+    updatedAt: ts,
+  }));
+
   return {
     users,
     categories,
@@ -234,6 +248,7 @@ async function seed(): Promise<Database> {
     downloads: [],
     payments: [],
     services,
+    testimonials,
     resetTokens: [],
     auditLogs: [],
     settings,
@@ -257,6 +272,27 @@ export async function loadDb(): Promise<Database> {
     const existing = await loadDatabaseFromMysql();
     if (existing) {
       memory = existing;
+      if (!memory.testimonials) memory.testimonials = [];
+      if (memory.testimonials.length === 0) {
+        const ts = now();
+        memory.testimonials = TESTIMONIALS.map((t, i) => ({
+          id: randomUUID(),
+          name: t.author,
+          roleOrCompany: t.role,
+          quote: t.quote,
+          rating: 5,
+          active: true,
+          sortOrder: i + 1,
+          createdAt: ts,
+          updatedAt: ts,
+        }));
+        try {
+          await persistDatabaseToMysql(memory);
+          console.info("[db] Backfilled client testimonials into MySQL");
+        } catch {
+          /* keep in-memory only */
+        }
+      }
       console.info("[db] Connected to MySQL via Prisma — loaded existing data");
       return memory;
     }

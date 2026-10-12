@@ -3,9 +3,9 @@ import {
   CATEGORIES,
   LIBRARY_FILES,
   SERVICES,
-  TESTIMONIALS,
   categoryFileCount,
 } from "../../lib/site-data";
+import { TestimonialsGrid } from "./TestimonialsSection";
 
 export function HomeServicesPreview() {
   return (
@@ -38,8 +38,17 @@ export function HomeServicesPreview() {
   );
 }
 
-export function HomeLibraryPreview() {
+export async function HomeLibraryPreview() {
   const preview = LIBRARY_FILES.filter((f) => f.verified).slice(0, 4);
+  let liveCount = LIBRARY_FILES.length;
+  try {
+    const { loadDb } = await import("../../lib/server/db");
+    const db = await loadDb();
+    const published = db.files.filter((f) => f.status === "published").length;
+    if (published > 0) liveCount = published;
+  } catch {
+    /* keep static count */
+  }
   return (
     <section>
       <div className="wrap">
@@ -50,7 +59,7 @@ export function HomeLibraryPreview() {
             <span className="gradient-cyan">boardviews</span>
           </h2>
           <p>
-            {LIBRARY_FILES.length}+ files ready to browse — search by board number or
+            {liveCount}+ files ready to browse — search by board number or
             filter by brand.
           </p>
         </div>
@@ -127,17 +136,7 @@ export function HomeTestimonialsPreview() {
             What our <span className="gradient-cyan">clients</span> say
           </h2>
         </div>
-        <div className="testimonial-grid">
-          {TESTIMONIALS.map((t) => (
-            <div className="testimonial-card reveal" key={t.author}>
-              <div className="stars">★★★★★</div>
-              <blockquote>&ldquo;{t.quote}&rdquo;</blockquote>
-              <div className="author">
-                {t.author} <span>— {t.role}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+        <TestimonialsGrid />
       </div>
     </section>
   );

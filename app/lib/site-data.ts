@@ -4,6 +4,8 @@ export type LibraryFile = {
   id: string;
   /** Display file name in tables; falls back to model + type */
   name?: string;
+  /** Original upload filename (for format badge) */
+  originalName?: string;
   model: string;
   brand: string;
   type: FileType;

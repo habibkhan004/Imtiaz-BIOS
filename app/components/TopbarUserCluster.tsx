@@ -72,6 +72,7 @@ export function TopbarUserCluster({
   settingsHref,
   unread = 0,
   showLogout = true,
+  onNavigate,
 }: {
   name: string;
   profileHref: string;
@@ -79,14 +80,23 @@ export function TopbarUserCluster({
   settingsHref: string;
   unread?: number;
   showLogout?: boolean;
+  onNavigate?: () => void;
 }) {
   const router = useRouter();
   const initial = (name?.trim()?.[0] || "U").toUpperCase();
 
   return (
     <div className="topbar-user-cluster">
-      <span className="portal-topbar-name">{name}</span>
-      <Link href={profileHref} className="header-avatar-btn" aria-label="Profile" title="Profile">
+      <span className="portal-topbar-name" title={name}>
+        {name}
+      </span>
+      <Link
+        href={profileHref}
+        className="header-avatar-btn"
+        aria-label="Profile"
+        title={name || "Profile"}
+        onClick={onNavigate}
+      >
         {initial}
       </Link>
       <Link
@@ -94,6 +104,7 @@ export function TopbarUserCluster({
         className={`header-icon-btn${unread > 0 ? " has-unread" : ""}`}
         aria-label={unread > 0 ? `${unread} unread notifications` : "Notifications"}
         title="Notifications"
+        onClick={onNavigate}
       >
         <BellIcon />
         {unread > 0 ? <span className="header-icon-dot" aria-hidden /> : null}
@@ -103,6 +114,7 @@ export function TopbarUserCluster({
         className="header-icon-btn"
         aria-label="Settings"
         title="Settings"
+        onClick={onNavigate}
       >
         <SettingsIcon />
       </Link>
@@ -110,13 +122,16 @@ export function TopbarUserCluster({
         <button
           type="button"
           className="logout-btn"
+          aria-label="Logout"
+          title="Logout"
           onClick={async () => {
+            onNavigate?.();
             await logoutEverywhere();
             router.push("/");
           }}
         >
           <LogoutIcon />
-          Logout
+          <span className="logout-btn-label">Logout</span>
         </button>
       ) : null}
     </div>

@@ -237,7 +237,7 @@ a {
 .wrap {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 clamp(32px, 6vw, 80px);
   position: relative;
   z-index: 1;
 }
@@ -526,7 +526,7 @@ nav.site-nav {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  padding: 14px 16px;
+  padding: 14px clamp(32px, 6vw, 80px);
   max-width: none;
   width: 100%;
   margin: 0;
@@ -791,10 +791,32 @@ nav.site-nav {
   justify-self: end;
   gap: 10px;
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.nav-cta-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .nav-cta .topbar-user-cluster {
-  gap: 10px;
+  gap: 8px;
+}
+
+.nav-account-panel {
+  display: none;
+}
+
+.nav-account-label {
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 12px 0 8px;
 }
 
 .site-header-logout {
@@ -806,9 +828,22 @@ nav.site-nav {
   color: #fca5a5;
 }
 
+.header-icon-btn svg,
+.logout-btn svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
 @media (max-width: 1100px) {
-  .site-nav .portal-topbar-name {
+  .site-nav .portal-topbar-name,
+  .portal-topbar .portal-topbar-name,
+  .admin-topbar .portal-topbar-name {
     display: none;
+  }
+
+  .portal-topbar-name {
+    max-width: 100px;
   }
 }
 
@@ -1019,6 +1054,34 @@ nav.site-nav {
 
   .nav-cta .btn-outline {
     display: none;
+  }
+
+  /* Logged-in extras move into the mobile drawer — keep bar compact */
+  .nav-cta-account {
+    display: none;
+  }
+
+  .nav-account-panel {
+    display: block;
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .nav-account-panel .topbar-user-cluster {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .nav-account-panel .portal-topbar-name {
+    display: inline;
+    max-width: none;
+    width: 100%;
+    order: -1;
+  }
+
+  .nav-account-panel .logout-btn-label {
+    display: inline;
   }
 }
 
@@ -2490,7 +2553,7 @@ footer {
 
 @media (max-width: 480px) {
   .wrap {
-    padding: 0 16px;
+    padding: 0 22px;
   }
   .hero {
     padding: 40px 0 32px;
@@ -2889,6 +2952,12 @@ a.service-card-link {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.floating-contact-btn svg {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
 .floating-contact-btn:hover {
   transform: translateY(-3px) scale(1.05);
 }
@@ -3051,7 +3120,7 @@ a.service-card-link {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   padding: 14px 24px;
   border-bottom: 1px solid var(--border-color);
   background: var(--chrome-bg);
@@ -3059,20 +3128,51 @@ a.service-card-link {
   position: sticky;
   top: 0;
   z-index: 20;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.topbar-lead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.topbar-title-block {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .portal-topbar-user {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .topbar-user-cluster {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .portal-topbar-name {
@@ -3081,13 +3181,19 @@ a.service-card-link {
   font-size: 15px;
   color: var(--text-primary);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
 }
 
 .logout-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 6px 4px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 8px;
   border: none;
   background: transparent;
   color: #f87171;
@@ -3097,6 +3203,11 @@ a.service-card-link {
   cursor: pointer;
   transition: var(--transition);
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.logout-btn-label {
+  display: inline;
 }
 
 .logout-btn:hover {
@@ -3298,6 +3409,11 @@ a.service-card-link {
   border-radius: 8px;
   padding: 8px 12px;
   cursor: pointer;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
 }
 
 .portal-sidebar-backdrop {
@@ -3592,6 +3708,10 @@ a.service-card-link {
   font-weight: 700;
   font-size: 18px;
   letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .admin-alert-pill {
@@ -4204,6 +4324,7 @@ a.service-card-link {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .admin-alert-pill {
@@ -4626,6 +4747,8 @@ html[data-theme="light"] .particles { opacity: 0.15; }
   width: 100%;
   max-width: 1200px;
   box-sizing: border-box;
+  padding-left: clamp(32px, 6vw, 80px);
+  padding-right: clamp(32px, 6vw, 80px);
 }
 
 .theme-toggle,
@@ -4658,8 +4781,14 @@ html[data-theme="light"] .particles { opacity: 0.15; }
 /* —— Tablet & below (lg: 1024) —— */
 @media (max-width: 1024px) {
   .wrap {
-    padding-left: 18px;
-    padding-right: 18px;
+    padding-left: clamp(28px, 4.5vw, 40px);
+    padding-right: clamp(28px, 4.5vw, 40px);
+  }
+
+  nav,
+  nav.site-nav {
+    padding-left: clamp(28px, 4.5vw, 40px);
+    padding-right: clamp(28px, 4.5vw, 40px);
   }
 
   .hero {
@@ -4676,6 +4805,11 @@ html[data-theme="light"] .particles { opacity: 0.15; }
     justify-content: center;
   }
 
+  .hero-brand-logo .logo-mark {
+    width: 48px;
+    height: 48px;
+  }
+
   .hero p.lead {
     margin-left: auto;
     margin-right: auto;
@@ -4683,6 +4817,11 @@ html[data-theme="light"] .particles { opacity: 0.15; }
 
   .hero-actions {
     justify-content: center;
+  }
+
+  .hero-actions .btn {
+    font-size: 14px;
+    padding: 12px 18px;
   }
 
   .stat-row {
@@ -4695,12 +4834,30 @@ html[data-theme="light"] .particles { opacity: 0.15; }
   .chip-stage {
     order: 2;
     padding: 8px;
-    max-width: 320px;
+    max-width: 280px;
     margin: 0 auto;
   }
 
   .chip-stage svg {
-    max-width: 280px;
+    max-width: 260px;
+  }
+
+  .service-card .service-icon {
+    font-size: 34px;
+  }
+
+  .brand-card .brand-icon {
+    font-size: 27px;
+  }
+
+  .floating-contact-btn {
+    width: 52px;
+    height: 52px;
+  }
+
+  .floating-contact-btn svg {
+    width: 24px;
+    height: 24px;
   }
 
   .services-grid,
@@ -4733,8 +4890,62 @@ html[data-theme="light"] .particles { opacity: 0.15; }
 /* —— Phones / small tablets (md: 768) —— */
 @media (max-width: 768px) {
   .wrap {
-    padding-left: 14px;
-    padding-right: 14px;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  nav,
+  nav.site-nav {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .service-card .service-icon {
+    font-size: 30px;
+    margin-bottom: 8px;
+  }
+
+  .brand-card .brand-icon {
+    font-size: 24px;
+  }
+
+  .hero-brand-logo .logo-mark {
+    width: 42px;
+    height: 42px;
+  }
+
+  .hero-actions .btn {
+    font-size: 13.5px;
+    padding: 12px 16px;
+  }
+
+  .chip-stage {
+    max-width: 240px;
+  }
+
+  .chip-stage svg {
+    max-width: 220px;
+  }
+
+  .floating-contact-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  .floating-contact-btn svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .file-format-badge:not(.is-lg) {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  .theme-toggle svg,
+  .nav-toggle svg {
+    width: 18px;
+    height: 18px;
   }
 
   .section-head {
@@ -4917,12 +5128,35 @@ html[data-theme="light"] .particles { opacity: 0.15; }
 
 /* —— Small phones (sm: 480) —— */
 @media (max-width: 480px) {
+  .wrap {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  nav,
+  nav.site-nav {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
   .hero {
     padding: 40px 0 36px;
   }
 
+  .service-card .service-icon {
+    font-size: 28px;
+  }
+
+  .brand-card .brand-icon {
+    font-size: 22px;
+  }
+
+  .chip-stage {
+    max-width: 200px;
+  }
+
   .chip-stage svg {
-    max-width: 220px;
+    max-width: 190px;
   }
 
   .stat b {
@@ -4932,15 +5166,22 @@ html[data-theme="light"] .particles { opacity: 0.15; }
   .floating-contact-btn {
     width: 48px;
     height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+
+  .floating-contact-btn svg {
+    width: 20px;
+    height: 20px;
   }
 
   .floating-telegram {
-    left: max(12px, env(safe-area-inset-left));
+    left: max(14px, env(safe-area-inset-left));
     bottom: max(16px, env(safe-area-inset-bottom));
   }
 
   .floating-whatsapp {
-    right: max(12px, env(safe-area-inset-right));
+    right: max(14px, env(safe-area-inset-right));
     bottom: max(16px, env(safe-area-inset-bottom));
   }
 
@@ -5157,9 +5398,274 @@ section,
     height: 44px;
   }
 
-  section {
-    padding-left: 0;
-    padding-right: 0;
+  .product-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .admin-row-feedback {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* —— File format badges (PDF / ZIP / TXT / BIN …) —— */
+.file-format-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg-surface)) 90%, transparent);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.file-format-badge.is-sm {
+  font-size: 10px;
+  padding: 2px 6px;
+  min-width: 2em;
+}
+.file-format-badge.is-lg {
+  font-size: 14px;
+  padding: 6px 12px;
+  min-width: 3em;
+}
+.file-format-badge.tone-pdf {
+  color: #c0392b;
+  border-color: color-mix(in srgb, #c0392b 40%, var(--border-color));
+  background: color-mix(in srgb, #c0392b 12%, var(--bg-surface));
+}
+.file-format-badge.tone-zip,
+.file-format-badge.tone-rar,
+.file-format-badge.tone-7z,
+.file-format-badge.tone-gz,
+.file-format-badge.tone-tar {
+  color: #b8860b;
+  border-color: color-mix(in srgb, #b8860b 40%, var(--border-color));
+  background: color-mix(in srgb, #b8860b 12%, var(--bg-surface));
+}
+.file-format-badge.tone-txt {
+  color: var(--accent-cyan);
+  border-color: color-mix(in srgb, var(--accent-cyan) 40%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-cyan) 12%, var(--bg-surface));
+}
+.file-format-badge.tone-bin,
+.file-format-badge.tone-rom,
+.file-format-badge.tone-hex,
+.file-format-badge.tone-fw {
+  color: var(--accent-purple, #7c5cfc);
+  border-color: color-mix(in srgb, #7c5cfc 40%, var(--border-color));
+  background: color-mix(in srgb, #7c5cfc 12%, var(--bg-surface));
+}
+.file-format-badge.tone-bdv,
+.file-format-badge.tone-sch,
+.file-format-badge.tone-brd {
+  color: var(--accent-gold);
+  border-color: color-mix(in srgb, var(--accent-gold) 40%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-gold) 12%, var(--bg-surface));
+}
+.file-format-badge.tone-other {
+  color: var(--text-muted);
+}
+
+.product-buy-format {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.product-buy-format-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.file-original-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.admin-row-feedback {
+  grid-template-columns: 1.1fr 1.6fr 0.6fr 0.4fr 0.7fr auto;
+  gap: 10px;
+}
+
+/* Extra responsive safety: forms, auth, cart */
+@media (max-width: 768px) {
+  .auth-card,
+  .cart-layout,
+  .checkout-layout,
+  .contact-box {
+    grid-template-columns: 1fr !important;
+  }
+
+  .product-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .product-buy {
+    position: static;
+  }
+
+  .stat-row .stat b {
+    font-size: clamp(20px, 6vw, 28px);
+  }
+
+  html,
+  body {
+    overflow-x: clip;
+  }
+}
+
+@media (max-width: 390px) {
+  .wrap {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  nav,
+  nav.site-nav {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .service-card .service-icon {
+    font-size: 26px;
+  }
+
+  .brand-card .brand-icon {
+    font-size: 20px;
+  }
+
+  .chip-stage svg {
+    max-width: 170px;
+  }
+
+  .hero-actions .btn {
+    font-size: 13px;
+  }
+
+  .floating-contact-btn {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    min-height: 46px;
+  }
+
+  .floating-contact-btn svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .portal-topbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .admin-topbar-title {
+    font-size: 13px;
+  }
+
+  .topbar-user-cluster {
+    gap: 4px;
+  }
+}
+
+/* —— Logged-in topbar / header cluster (all roles) —— */
+@media (max-width: 1024px) {
+  .portal-topbar,
+  .admin-topbar {
+    padding-left: 16px;
+    padding-right: 16px;
+    gap: 10px;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  .topbar-user-cluster {
+    gap: 6px;
+  }
+
+  .header-avatar-btn,
+  .header-icon-btn,
+  .header-profile-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .header-avatar-btn {
+    font-size: 13px;
+  }
+
+  .header-icon-btn svg,
+  .logout-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .admin-topbar-title {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 768px) {
+  .portal-topbar-name {
+    display: none !important;
+  }
+
+  .topbar-actions .logout-btn-label,
+  .portal-topbar .logout-btn-label,
+  .admin-topbar .logout-btn-label {
+    display: none;
+  }
+
+  .header-avatar-btn,
+  .header-icon-btn,
+  .header-profile-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .header-icon-btn svg,
+  .logout-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .portal-topbar {
+    padding: 10px 14px;
+  }
+
+  .admin-topbar-kicker {
+    font-size: 9px;
+  }
+
+  .admin-topbar-title {
+    font-size: 13px;
+  }
+
+  /* Drawer account panel still shows name */
+  .nav-account-panel .portal-topbar-name {
+    display: inline !important;
+  }
+
+  .nav-account-panel .logout-btn-label {
+    display: inline !important;
   }
 }
 

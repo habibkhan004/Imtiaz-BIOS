@@ -28,6 +28,7 @@ const NAV_GROUPS = [
     items: [
       { href: "/admin/requests", label: "Requests" },
       { href: "/admin/support", label: "Support Tickets" },
+      { href: "/admin/testimonials", label: "Client feedback" },
     ],
   },
   {

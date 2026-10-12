@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteShell } from "../../components/SiteShell";
+import { fileFormatFromName } from "../../lib/file-format";
 import {
   CATEGORIES,
   filesInCategory,
@@ -19,6 +20,7 @@ type Props = { params: Promise<{ slug: string }> };
 type CategoryFileRow = {
   id: string;
   name: string;
+  originalName?: string;
   model: string;
   brand: string;
   type: string;
@@ -44,6 +46,7 @@ function staticToRow(f: LibraryFile, index: number): CategoryFileRow {
   return {
     id: f.id,
     name: libraryFileName(f),
+    originalName: f.originalName,
     model: f.model,
     brand: f.brand,
     type: f.type,
@@ -68,6 +71,7 @@ async function loadCategoryRows(slug: string): Promise<CategoryFileRow[]> {
         return {
           id: f.id,
           name: f.name,
+          originalName: f.originalName,
           model: f.boardNumber || f.modelNumber || f.name,
           brand: brand?.name || "—",
           type: f.fileType,
@@ -147,6 +151,10 @@ export default async function CategoryDetailPage({ params }: Props) {
             ) : (
               files.map((item, index) => {
                 const free = libraryFileIsFree(item);
+                const format = fileFormatFromName(
+                  item.originalName,
+                  item.name,
+                );
                 return (
                   <div className="lib-row category-files-row" key={item.id}>
                     <span className="lib-serno" data-label="Ser No">
@@ -161,7 +169,14 @@ export default async function CategoryDetailPage({ params }: Props) {
                     <span data-label="Brand">
                       <span className="tag tag-brand">{item.brand}</span>
                     </span>
-                    <span data-label="Type">{item.type}</span>
+                    <span data-label="Type">
+                      {item.type}{" "}
+                      <span
+                        className={`file-format-badge tone-${format.tone} is-sm`}
+                      >
+                        {format.label}
+                      </span>
+                    </span>
                     <span data-label="Size">{item.size}</span>
                     <span data-label="Price">
                       {free ? (

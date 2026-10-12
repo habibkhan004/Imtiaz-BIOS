@@ -210,6 +210,19 @@ export function Header() {
               {links.consoleLabel}
             </Link>
           ) : null}
+          {user && links ? (
+            <div className="nav-account-panel">
+              <div className="nav-account-label">Account</div>
+              <TopbarUserCluster
+                name={user.name}
+                profileHref={links.profileHref}
+                notificationsHref={links.notificationsHref}
+                settingsHref={links.settingsHref}
+                showLogout
+                onNavigate={closeNav}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="nav-cta">
@@ -227,7 +240,7 @@ export function Header() {
             {count > 0 ? <span className="nav-cart-badge">{count}</span> : null}
           </Link>
           {user && links ? (
-            <>
+            <div className="nav-cta-account">
               <TopbarUserCluster
                 name={user.name}
                 profileHref={links.profileHref}
@@ -235,11 +248,17 @@ export function Header() {
                 settingsHref={links.settingsHref}
                 showLogout={false}
               />
-              <button type="button" className="logout-btn site-header-logout" onClick={onLogout}>
+              <button
+                type="button"
+                className="logout-btn site-header-logout"
+                onClick={onLogout}
+                aria-label="Logout"
+                title="Logout"
+              >
                 <LogoutIcon />
-                Logout
+                <span className="logout-btn-label">Logout</span>
               </button>
-            </>
+            </div>
           ) : (
             <>
               <Link

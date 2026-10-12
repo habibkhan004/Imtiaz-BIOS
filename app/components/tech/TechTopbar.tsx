@@ -16,22 +16,26 @@ export function TechTopbar({
 }) {
   return (
     <div className="portal-topbar admin-topbar">
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      <div className="topbar-lead">
         <button type="button" className="portal-menu-btn" onClick={onMenu}>
           ☰
         </button>
-        <div style={{ minWidth: 0 }}>
+        <div className="topbar-title-block">
           <div className="admin-topbar-kicker">Technician portal</div>
-          <div className="admin-topbar-title">{title}</div>
+          <div className="admin-topbar-title" title={title}>
+            {title}
+          </div>
         </div>
       </div>
-      <TopbarUserCluster
-        name={user.name}
-        unread={unread}
-        profileHref="/tech"
-        notificationsHref="/tech"
-        settingsHref="/tech?type=upload"
-      />
+      <div className="topbar-actions">
+        <TopbarUserCluster
+          name={user.name}
+          unread={unread}
+          profileHref="/tech"
+          notificationsHref="/tech"
+          settingsHref="/tech?type=upload"
+        />
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { formatCompactCount } from "../lib/file-format";
 import { BrandLogo } from "./BrandLogo";
 
 const PIN_COORDS = [
@@ -35,8 +36,18 @@ const PIN_COORDS = [
   { x: 254, y: 200, w: 26, h: 6 },
 ];
 
+type PublicStats = {
+  publishedFiles: number;
+  totalDownloads: number;
+  brands: number;
+  categories: number;
+  verifiedFiles: number;
+  services: number;
+};
+
 export function Hero() {
   const [activePin, setActivePin] = useState(0);
+  const [stats, setStats] = useState<PublicStats | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -44,6 +55,32 @@ export function Hero() {
     }, 400);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/public/stats", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!cancelled && data) setStats(data as PublicStats);
+        })
+        .catch(() => undefined);
+    };
+    load();
+    const poll = setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, []);
+
+  const filesLabel = stats
+    ? formatCompactCount(stats.publishedFiles)
+    : "—";
+  const downloadsLabel = stats
+    ? formatCompactCount(stats.totalDownloads)
+    : "—";
+  const brandsLabel = stats ? formatCompactCount(stats.brands) : "—";
 
   return (
     <section className="hero">
@@ -83,15 +120,15 @@ export function Hero() {
           </div>
           <div className="stat-row">
             <div className="stat">
-              <b>12.4K</b>
+              <b>{filesLabel}</b>
               <span>Files shared</span>
             </div>
             <div className="stat">
-              <b>6.9K</b>
-              <span>Boards fixed</span>
+              <b>{downloadsLabel}</b>
+              <span>Downloads</span>
             </div>
             <div className="stat">
-              <b>8</b>
+              <b>{brandsLabel}</b>
               <span>Brands supported</span>
             </div>
             <div className="stat">

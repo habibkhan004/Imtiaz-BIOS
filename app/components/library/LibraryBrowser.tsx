@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { readAuth } from "../../lib/auth";
+import { fileFormatFromName } from "../../lib/file-format";
 import {
   CATEGORIES,
   FILE_TYPES,
@@ -124,6 +125,7 @@ export function LibraryBrowser() {
                 modelNumber?: string;
                 boardNumber?: string;
                 name: string;
+                originalName?: string;
                 brandName?: string;
                 fileType: string;
                 sizeBytes: number;
@@ -138,6 +140,7 @@ export function LibraryBrowser() {
                 return {
                   id: f.id,
                   name: f.name,
+                  originalName: f.originalName,
                   model: f.modelNumber || f.boardNumber || f.name,
                   brand: f.brandName || "Other",
                   type: f.fileType as LibraryFile["type"],
@@ -362,6 +365,10 @@ export function LibraryBrowser() {
         ) : (
           filtered.map((item, index) => {
             const free = libraryFileIsFree(item);
+            const format = fileFormatFromName(
+              item.originalName,
+              libraryFileName(item),
+            );
             return (
               <div
                 className="lib-row category-files-row"
@@ -380,7 +387,12 @@ export function LibraryBrowser() {
                 <span data-label="Brand">
                   <span className="tag tag-brand">{item.brand}</span>
                 </span>
-                <span data-label="Type">{item.type}</span>
+                <span data-label="Type">
+                  {item.type}{" "}
+                  <span className={`file-format-badge tone-${format.tone} is-sm`}>
+                    {format.label}
+                  </span>
+                </span>
                 <span data-label="Size">{item.size}</span>
                 <span data-label="Price">
                   {free ? (

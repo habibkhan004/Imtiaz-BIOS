@@ -116,7 +116,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     status: 200,
     headers: {
       "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${file.originalName.replace(/"/g, "")}.txt"`,
+      "Content-Disposition": `attachment; filename="${(file.originalName || "download.bin").replace(/"/g, "")}"`,
       "Cache-Control": "no-store",
       "X-Entitlement": ent.reason,
       "X-Demo-Stub": "1",
