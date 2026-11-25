@@ -2,6 +2,10 @@ export type FileType = "BIOS bin" | "Boardview" | "Schematic" | "EC firmware";
 
 export type LibraryFile = {
   id: string;
+  /** Display file name in tables; falls back to model + type */
+  name?: string;
+  /** Original upload filename (for format badge) */
+  originalName?: string;
   model: string;
   brand: string;
   type: FileType;
@@ -9,7 +13,29 @@ export type LibraryFile = {
   size: string;
   verified: boolean;
   description: string;
+  accessType?: "free" | "paid";
+  price?: number;
 };
+
+export function libraryFileName(f: Pick<LibraryFile, "name" | "model" | "type">) {
+  if (f.name?.trim()) return f.name.trim();
+  const ext =
+    f.type === "Schematic" || f.type === "Boardview" ? "pdf" : "bin";
+  return `${f.model}.${ext}`;
+}
+
+export function libraryFileIsFree(
+  f: Pick<LibraryFile, "accessType" | "price">,
+) {
+  return f.accessType === "free" || !(Number(f.price ?? 0) > 0);
+}
+
+export function libraryFilePriceLabel(
+  f: Pick<LibraryFile, "accessType" | "price">,
+) {
+  if (libraryFileIsFree(f)) return "Free";
+  return `$${Number(f.price).toFixed(2)}`;
+}
 
 export type Category = {
   slug: string;
@@ -235,44 +261,195 @@ export const BRANDS = [
   { name: "Chromebook", note: "Enrollment removal", icon: "🌐" },
 ] as const;
 
-export const SERVICES = [
+export type ServiceAccess = "free" | "paid" | "quote";
+
+export type SiteService = {
+  slug: string;
+  title: string;
+  icon: string;
+  /** Short blurb for cards / dropdown (alias: desc) */
+  shortDesc: string;
+  desc: string;
+  description: string;
+  priceLabel: string;
+  /** Alias of priceLabel for admin / legacy UI */
+  price: string;
+  access: ServiceAccess;
+  images: string[];
+  features: string[];
+  turnaround?: string;
+  includes?: string[];
+  excludes?: string[];
+  forWho?: string;
+  faqs?: { q: string; a: string }[];
+};
+
+export const SERVICES: SiteService[] = [
   {
+    slug: "bios-flashing",
     icon: "🔌",
     title: "BIOS Flashing & Recovery",
+    shortDesc:
+      "Recover corrupted SPI dumps, blank display, and no-power boards with tested BIOS images.",
     desc: "Recover corrupted SPI dumps, blank display, and no-power boards with tested BIOS images.",
+    description:
+      "We recover boards stuck after bad flashes, liquid damage, or ME corruption. Send the exact board number and chip part (25Q64, 25Q128, etc.) and we match a verified dump, clean ME/IFD when needed, and guide safe rewrite with CH341A, RT809F, or in-circuit ISP.",
+    priceLabel: "From $25",
     price: "From $25",
+    access: "paid",
+    images: [],
+    features: [
+      "Matched board revision dumps",
+      "ME / IFD clean when required",
+      "Programmer pinout guidance",
+      "First-boot checklist after rewrite",
+    ],
+    turnaround: "Often same day",
+    includes: ["Dump match or rebuild notes", "Telegram bench support during flash"],
+    excludes: ["On-site hardware repair", "GPU reball / BGA work"],
+    forWho: "Shop techs and field repair desks fixing no-POST or blank-screen boards.",
+    faqs: [
+      {
+        q: "Do I need the original dump?",
+        a: "Helpful but not required — board stamp + chip ID is usually enough to start.",
+      },
+    ],
   },
   {
+    slug: "password-unlocking",
     icon: "🔓",
     title: "Password Unlocking",
+    shortDesc:
+      "BIOS, supervisor, and EFI password removal for Dell, HP, Lenovo, Apple, and more.",
     desc: "BIOS, supervisor, and EFI password removal for Dell, HP, Lenovo, Apple, and more.",
+    description:
+      "Supervisor and BIOS password locks block legitimate repair work. We support Dell service-tag flows, HP response codes, Lenovo/ThinkPad, Toshiba, Surface firmware locks, Apple EFI, and many Chromebook enrollment cases — with clear steps for what data we need from you.",
+    priceLabel: "From $15",
     price: "From $15",
+    access: "paid",
+    images: [],
+    features: [
+      "Dell / HP / Lenovo / Toshiba / Surface / Apple",
+      "Clear input checklist per brand",
+      "Fast turnaround on common models",
+    ],
+    turnaround: "Minutes to a few hours",
+    includes: ["Unlock procedure or binary", "Brand-specific notes"],
+    excludes: ["Illegal bypass of stolen-device protection without proof of ownership"],
+    forWho: "Repair shops clearing customer machines with forgotten supervisor passwords.",
+    faqs: [
+      {
+        q: "What do you need from me?",
+        a: "Brand, model, and the lock screen / service tag / hash your tool shows — we list exact fields per brand after you open a request.",
+      },
+    ],
   },
   {
+    slug: "boardview-access",
     icon: "🗺️",
     title: "Boardview Access",
+    shortDesc:
+      "Search and download verified boardviews to speed up component-level troubleshooting.",
     desc: "Search and download verified boardviews to speed up component-level troubleshooting.",
+    description:
+      "Browse interactive boardviews with silkscreen and net labels so you can trace rails, shorts, and missing voltages without guessing. Many boardviews are included with library access; premium packs unlock rarer revisions.",
+    priceLabel: "Free / library",
     price: "Library access",
+    access: "free",
+    images: [],
+    features: [
+      "Search by board number",
+      "Verified tags from bench use",
+      "Pairs with schematic packs",
+    ],
+    turnaround: "Instant download when entitled",
+    includes: ["Library browse", "Verified file notes"],
+    forWho: "Component-level techs tracing power and signal paths.",
   },
   {
+    slug: "schematic-access",
     icon: "📐",
     title: "Schematic Access",
+    shortDesc:
+      "Circuit schematics for power rails, charging paths, and display circuits.",
     desc: "Circuit schematics for power rails, charging paths, and display circuits.",
+    description:
+      "Full schematic sets for charging ICs, display power, and common no-power trees. Use them alongside boardviews to confirm nets before lifting parts. Free and paid titles appear clearly in the file library.",
+    priceLabel: "Free / library",
     price: "Library access",
+    access: "free",
+    images: [],
+    features: [
+      "Power-rail focused packs",
+      "PDF schematic sets",
+      "Revision notes when available",
+    ],
+    turnaround: "Instant download when entitled",
+    includes: ["Schematic PDFs", "Related boardview links when listed"],
+    forWho: "Techs diagnosing charging, display, and power-sequence faults.",
   },
   {
+    slug: "file-verification",
     icon: "✅",
     title: "File Verification Request",
+    shortDesc:
+      "Submit a dump for technician review before you flash a customer board.",
     desc: "Submit a dump for technician review before you flash a customer board.",
+    description:
+      "Before you write a community dump to a customer SPI chip, have a technician review size, ME region, and board match. Upload your dump (or request a second look at a library file) and get a clear pass / needs-changes answer.",
+    priceLabel: "From $10",
     price: "From $10",
+    access: "paid",
+    images: [],
+    features: [
+      "Size and region sanity checks",
+      "Board-revision match notes",
+      "Flash-risk warnings",
+    ],
+    turnaround: "Usually within a few hours",
+    includes: ["Written verification note", "Suggested next step"],
+    excludes: ["Guaranteed success on mismatched hardware"],
+    forWho: "Shops that want a second pair of eyes before programming.",
   },
   {
+    slug: "custom-file-request",
     icon: "📤",
     title: "Custom File Request",
+    shortDesc:
+      "Need a board number that is not listed yet? Open a request with the exact PCB stamp.",
     desc: "Need a board number that is not listed yet? Open a request with the exact PCB stamp.",
+    description:
+      "Missing LA / DA / NM numbers happen. Open a custom request with the PCB stamp, chip ID, and symptoms. We quote sourcing or rebuild work before you commit — no surprise fees.",
+    priceLabel: "Quote on request",
     price: "Quote on request",
+    access: "quote",
+    images: [],
+    features: [
+      "Exact PCB stamp intake",
+      "Transparent quote before work",
+      "Published to library when reusable",
+    ],
+    turnaround: "Quote same day in most cases",
+    includes: ["Intake review", "Price quote", "Delivery path once approved"],
+    excludes: ["Guaranteed find for discontinued rare boards"],
+    forWho: "Anyone hunting a board number that is not in the public library yet.",
+    faqs: [
+      {
+        q: "What if you cannot find it?",
+        a: "We say so up front — you only pay if you accept a clear quote for sourcing or rebuild.",
+      },
+    ],
   },
-] as const;
+];
+
+export function getService(slug: string) {
+  const decoded = decodeURIComponent(slug).toLowerCase();
+  return SERVICES.find((s) => s.slug.toLowerCase() === decoded);
+}
+
+export function relatedServices(slug: string, limit = 3) {
+  return SERVICES.filter((s) => s.slug !== slug).slice(0, limit);
+}
 
 export const TESTIMONIALS = [
   {

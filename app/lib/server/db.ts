@@ -1,5 +1,3 @@
-import { mkdir, readFile, writeFile } from "fs/promises";
-import path from "path";
 import { randomUUID } from "crypto";
 import type {
   Brand,
@@ -10,18 +8,18 @@ import type {
   Role,
   ServiceItem,
   SubscriptionPlan,
+  Testimonial,
   User,
 } from "../domain/types";
+import { TESTIMONIALS } from "../site-data";
 import { hashPassword } from "./password";
 import { ALLOWED_EXTENSIONS_DEFAULT, ALLOWED_MIME_DEFAULT } from "./file-storage";
-import { connectMongo, hasMongoUri, mongoReadyState } from "./mongo";
-import { loadDatabaseFromMongo, persistDatabaseToMongo } from "./mongo-store";
-
-const DB_PATH = process.env.DATA_DB_PATH || path.join(process.cwd(), ".data", "imtiaz-db.json");
+import { prisma } from "./prisma";
+import { loadDatabaseFromMysql, persistDatabaseToMysql } from "./prisma-store";
 
 let memory: Database | null = null;
 let writeChain: Promise<void> = Promise.resolve();
-let backend: "mongo" | "json" | null = null;
+let backend: "mysql" | "memory" | null = null;
 
 function slugify(s: string): string {
   return s
@@ -222,6 +220,18 @@ async function seed(): Promise<Database> {
     allowedMimeTypes: ALLOWED_MIME_DEFAULT,
   };
 
+  const testimonials: Testimonial[] = TESTIMONIALS.map((t, i) => ({
+    id: randomUUID(),
+    name: t.author,
+    roleOrCompany: t.role,
+    quote: t.quote,
+    rating: 5,
+    active: true,
+    sortOrder: i + 1,
+    createdAt: ts,
+    updatedAt: ts,
+  }));
+
   return {
     users,
     categories,
@@ -238,64 +248,66 @@ async function seed(): Promise<Database> {
     downloads: [],
     payments: [],
     services,
+    testimonials,
     resetTokens: [],
     auditLogs: [],
     settings,
   };
 }
 
-async function ensureDir() {
-  await mkdir(path.dirname(DB_PATH), { recursive: true });
-}
-
-async function persistJson(db: Database) {
-  await ensureDir();
-  await writeFile(DB_PATH, JSON.stringify(db, null, 2), "utf8");
-}
-
-async function persist(db: Database) {
-  if (backend === "mongo") {
-    await persistDatabaseToMongo(db);
-    return;
-  }
-  await persistJson(db);
-}
-
 export async function loadDb(): Promise<Database> {
   if (memory) return memory;
 
-  if (hasMongoUri()) {
-    try {
-      await connectMongo();
-      backend = "mongo";
-      const existing = await loadDatabaseFromMongo();
-      if (existing) {
-        memory = existing;
-        console.info("[db] Connected to MongoDB — loaded existing data");
-        return memory;
-      }
-      memory = await seed();
-      await persistDatabaseToMongo(memory);
-      console.info("[db] Connected to MongoDB — seeded initial data");
-      return memory;
-    } catch (err) {
-      console.error("[db] MongoDB connection failed, falling back to JSON file:", err);
-      backend = "json";
-    }
-  } else {
-    backend = "json";
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.warn(
+      "[db] DATABASE_URL is not set — using in-memory demo data. Add mysql://root@127.0.0.1:3306/Imtiaz-bios to .env.local when MySQL is available.",
+    );
+    backend = "memory";
+    memory = await seed();
+    return memory;
   }
 
-  await ensureDir();
   try {
-    const raw = await readFile(DB_PATH, "utf8");
-    memory = JSON.parse(raw) as Database;
-    console.info("[db] Using JSON file store at", DB_PATH);
-    return memory;
-  } catch {
+    backend = "mysql";
+    const existing = await loadDatabaseFromMysql();
+    if (existing) {
+      memory = existing;
+      if (!memory.testimonials) memory.testimonials = [];
+      if (memory.testimonials.length === 0) {
+        const ts = now();
+        memory.testimonials = TESTIMONIALS.map((t, i) => ({
+          id: randomUUID(),
+          name: t.author,
+          roleOrCompany: t.role,
+          quote: t.quote,
+          rating: 5,
+          active: true,
+          sortOrder: i + 1,
+          createdAt: ts,
+          updatedAt: ts,
+        }));
+        try {
+          await persistDatabaseToMysql(memory);
+          console.info("[db] Backfilled client testimonials into MySQL");
+        } catch {
+          /* keep in-memory only */
+        }
+      }
+      console.info("[db] Connected to MySQL via Prisma — loaded existing data");
+      return memory;
+    }
+
     memory = await seed();
-    await persistJson(memory);
-    console.info("[db] Seeded JSON file store at", DB_PATH);
+    await persistDatabaseToMysql(memory);
+    console.info("[db] Connected to MySQL via Prisma — seeded initial data");
+    return memory;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[db] MySQL unreachable (${message}). Falling back to in-memory demo data. Start XAMPP/MySQL on 127.0.0.1:3306 and restart the dev server to use the real database.`,
+    );
+    backend = "memory";
+    memory = await seed();
     return memory;
   }
 }
@@ -305,7 +317,16 @@ export async function updateDb<T>(fn: (db: Database) => T | Promise<T>): Promise
     const db = await loadDb();
     const result = await fn(db);
     memory = db;
-    await persist(db);
+    if (backend === "mysql") {
+      try {
+        await persistDatabaseToMysql(db);
+      } catch (err) {
+        console.warn(
+          "[db] Failed to persist to MySQL; keeping in-memory changes only.",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
     return result;
   });
   writeChain = run.then(
@@ -315,23 +336,21 @@ export async function updateDb<T>(fn: (db: Database) => T | Promise<T>): Promise
   return run;
 }
 
-/** Force reload from backing store (e.g. after external Mongo edits). */
+/** Force reload from MySQL (e.g. after external edits). */
 export async function reloadDb(): Promise<Database> {
   memory = null;
   backend = null;
   return loadDb();
 }
 
-export function getDbBackend(): "mongo" | "json" | "uninitialized" {
+export function getDbBackend(): "mysql" | "memory" | "uninitialized" {
   return backend ?? "uninitialized";
 }
 
 export function getDbStatus() {
   return {
     backend: getDbBackend(),
-    mongoConfigured: hasMongoUri(),
-    mongoReadyState: hasMongoUri() ? mongoReadyState() : "n/a",
-    jsonPath: DB_PATH,
+    mysqlConfigured: Boolean(process.env.DATABASE_URL?.trim()),
   };
 }
 
@@ -346,7 +365,10 @@ export function findCategory(db: Database, idOrSlug: string) {
 
 export function findBrand(db: Database, idOrName: string) {
   return db.brands.find(
-    (b) => b.id === idOrName || b.slug === idOrName || b.name.toLowerCase() === idOrName.toLowerCase(),
+    (b) =>
+      b.id === idOrName ||
+      b.slug === idOrName ||
+      b.name.toLowerCase() === idOrName.toLowerCase(),
   );
 }
 
@@ -355,4 +377,4 @@ export function nextTicketNumber(db: Database, prefix: string): string {
   return `${prefix}-${String(n).padStart(6, "0")}`;
 }
 
-export { now, randomUUID };
+export { now, randomUUID, prisma };

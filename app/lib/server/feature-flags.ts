@@ -11,6 +11,6 @@ export const featureFlags = {
   aiClassification: process.env.FEATURE_AI_CLASSIFICATION === "true",
   /** Phase 3 — duplicate detection */
   duplicateDetection: process.env.FEATURE_DUPLICATE_DETECTION === "true",
-  /** Use Mongo when URI set and adapter implemented */
-  mongo: Boolean(process.env.MONGODB_URI),
+  /** MySQL via Prisma when DATABASE_URL is set */
+  mysql: Boolean(process.env.DATABASE_URL),
 };

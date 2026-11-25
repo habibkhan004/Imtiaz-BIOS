@@ -255,6 +255,18 @@ export type ServiceItem = {
   updatedAt: string;
 };
 
+export type Testimonial = {
+  id: string;
+  name: string;
+  roleOrCompany: string;
+  quote: string;
+  rating: number;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PasswordResetToken = {
   id: string;
   userId: string;
@@ -302,6 +314,7 @@ export type Database = {
   downloads: DownloadEvent[];
   payments: Payment[];
   services: ServiceItem[];
+  testimonials: Testimonial[];
   resetTokens: PasswordResetToken[];
   auditLogs: AuditLog[];
   settings: PlatformSettings;

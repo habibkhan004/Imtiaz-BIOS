@@ -4,11 +4,15 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { readAuth } from "../../lib/auth";
+import { fileFormatFromName } from "../../lib/file-format";
 import {
   CATEGORIES,
   FILE_TYPES,
   FILTER_BRANDS,
   LIBRARY_FILES,
+  libraryFileIsFree,
+  libraryFileName,
+  libraryFilePriceLabel,
   type LibraryFile,
 } from "../../lib/site-data";
 
@@ -19,19 +23,44 @@ function filterFiles(
   type: string,
   category: string,
   verifiedOnly: boolean,
+  access: string,
 ) {
   const query = q.trim().toLowerCase();
-  return files.filter((item) => {
+  return files.filter((item, index) => {
     const matchSearch =
       !query ||
       item.model.toLowerCase().includes(query) ||
-      item.brand.toLowerCase().includes(query);
+      item.brand.toLowerCase().includes(query) ||
+      (item.name && item.name.toLowerCase().includes(query));
     const matchBrand = !brand || item.brand === brand;
     const matchType = !type || item.type === type;
     const matchCategory = !category || item.category === category;
     const matchVerified = !verifiedOnly || item.verified;
-    return matchSearch && matchBrand && matchType && matchCategory && matchVerified;
+    const priced = withPriceDefaults(item, index);
+    const free = libraryFileIsFree(priced);
+    const matchAccess =
+      !access ||
+      (access === "free" && free) ||
+      (access === "paid" && !free);
+    return (
+      matchSearch &&
+      matchBrand &&
+      matchType &&
+      matchCategory &&
+      matchVerified &&
+      matchAccess
+    );
   });
+}
+
+function withPriceDefaults(f: LibraryFile, index: number): LibraryFile {
+  if (f.accessType !== undefined || f.price !== undefined) return f;
+  const paidDefault = index % 3 === 0;
+  return {
+    ...f,
+    accessType: paidDefault ? "paid" : "free",
+    price: paidDefault ? Number((9.99 + (index % 4) * 3).toFixed(2)) : 0,
+  };
 }
 
 function requestHref(model: string, loggedIn: boolean) {
@@ -85,8 +114,8 @@ export function LibraryBrowser() {
       if (access) params.set("access", access);
       if (sort) params.set("sort", sort);
       params.set("limit", "100");
-      fetch(`/api/files?${params}`, { credentials: "include" })
-        .then((r) => (r.ok ? r.json() : null))
+      fetch(`/api/files?${params.toString()}`, { credentials: "include" })
+        .then((r) => r.json())
         .then((data) => {
           if (!data?.items) return;
           setApiFiles(
@@ -96,15 +125,22 @@ export function LibraryBrowser() {
                 modelNumber?: string;
                 boardNumber?: string;
                 name: string;
+                originalName?: string;
                 brandName?: string;
                 fileType: string;
                 sizeBytes: number;
                 verificationStatus: string;
                 description: string;
                 categoryName?: string;
-              }) =>
-                ({
+                accessType?: string;
+                price?: number;
+              }) => {
+                const price = Number(f.price ?? 0);
+                const free = f.accessType === "free" || !(price > 0);
+                return {
                   id: f.id,
+                  name: f.name,
+                  originalName: f.originalName,
                   model: f.modelNumber || f.boardNumber || f.name,
                   brand: f.brandName || "Other",
                   type: f.fileType as LibraryFile["type"],
@@ -112,7 +148,10 @@ export function LibraryBrowser() {
                   size: formatSize(f.sizeBytes),
                   verified: f.verificationStatus === "verified",
                   description: f.description,
-                }) satisfies LibraryFile,
+                  accessType: free ? "free" : "paid",
+                  price: free ? 0 : price,
+                } satisfies LibraryFile;
+              },
             ),
           );
         })
@@ -160,13 +199,14 @@ export function LibraryBrowser() {
       type,
       category,
       verifiedOnly,
+      access,
     );
     const merged = [...apiFiles];
     for (const s of staticFiltered) {
       if (!merged.some((m) => m.id === s.id || m.model === s.model)) merged.push(s);
     }
-    return merged;
-  }, [apiFiles, q, brand, type, category, verifiedOnly]);
+    return merged.map((f, i) => withPriceDefaults(f, i));
+  }, [apiFiles, q, brand, type, category, verifiedOnly, access]);
 
   const clearFilters = () => {
     setQ("");
@@ -290,13 +330,17 @@ export function LibraryBrowser() {
         </span>
       </div>
 
-      <div className="lib-table">
-        <div className="lib-row head">
+      <div className="lib-table category-files-table">
+        <div className="lib-row head category-files-row">
+          <span>Ser No</span>
+          <span>File name</span>
           <span>Board / Model</span>
           <span>Brand</span>
           <span>Type</span>
           <span>Size</span>
-          <span>Actions</span>
+          <span>Price</span>
+          <span>Status</span>
+          <span>Action</span>
         </div>
         {filtered.length === 0 ? (
           <div className="empty-library">
@@ -319,40 +363,65 @@ export function LibraryBrowser() {
             </p>
           </div>
         ) : (
-          filtered.map((item, index) => (
-            <div
-              className="lib-row"
-              key={item.id}
-              style={{ animationDelay: `${index * 0.04}s` }}
-            >
-              <span className="lib-model">
-                <Link href={`/library/${item.id}`} style={{ color: "inherit" }}>
+          filtered.map((item, index) => {
+            const free = libraryFileIsFree(item);
+            const format = fileFormatFromName(
+              item.originalName,
+              libraryFileName(item),
+            );
+            return (
+              <div
+                className="lib-row category-files-row"
+                key={item.id}
+                style={{ animationDelay: `${index * 0.04}s` }}
+              >
+                <span className="lib-serno" data-label="Ser No">
+                  {index + 1}
+                </span>
+                <span className="lib-filename" data-label="File name">
+                  <Link href={`/library/${item.id}`}>{libraryFileName(item)}</Link>
+                </span>
+                <span className="lib-model" data-label="Board / Model">
                   {item.model}
-                </Link>
-              </span>
-              <span>
-                <span className="tag tag-brand">{item.brand}</span>
-              </span>
-              <span>{item.type}</span>
-              <span>
-                {item.size}{" "}
-                {item.verified ? (
-                  <span className="tag tag-verified">✓ verified</span>
-                ) : null}
-              </span>
-              <div className="action-btns">
-                <Link href={`/library/${item.id}`} className="btn btn-download btn-sm">
-                  View
-                </Link>
-                <Link
-                  href={requestHref(item.model, loggedIn)}
-                  className="btn btn-request btn-sm"
-                >
-                  Request
-                </Link>
+                </span>
+                <span data-label="Brand">
+                  <span className="tag tag-brand">{item.brand}</span>
+                </span>
+                <span data-label="Type">
+                  {item.type}{" "}
+                  <span className={`file-format-badge tone-${format.tone} is-sm`}>
+                    {format.label}
+                  </span>
+                </span>
+                <span data-label="Size">{item.size}</span>
+                <span data-label="Price">
+                  {free ? (
+                    <span className="tag tag-free">Free</span>
+                  ) : (
+                    <span className="tag tag-price">{libraryFilePriceLabel(item)}</span>
+                  )}
+                </span>
+                <span data-label="Status">
+                  {item.verified ? (
+                    <span className="tag tag-verified">Verified</span>
+                  ) : (
+                    <span className="tag tag-unverified">Unverified</span>
+                  )}
+                </span>
+                <div className="action-btns" data-label="Action">
+                  <Link href={`/library/${item.id}`} className="btn btn-download btn-sm">
+                    View
+                  </Link>
+                  <Link
+                    href={requestHref(item.model, loggedIn)}
+                    className="btn btn-request btn-sm"
+                  >
+                    Request
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

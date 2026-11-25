@@ -16,22 +16,26 @@ export function AdminTopbar({
 }) {
   return (
     <div className="portal-topbar admin-topbar">
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      <div className="topbar-lead">
         <button type="button" className="portal-menu-btn" onClick={onMenu}>
           ☰
         </button>
-        <div style={{ minWidth: 0 }}>
+        <div className="topbar-title-block">
           <div className="admin-topbar-kicker">Administration</div>
-          <div className="admin-topbar-title">{title}</div>
+          <div className="admin-topbar-title" title={title}>
+            {title}
+          </div>
         </div>
       </div>
-      <TopbarUserCluster
-        name={user.name}
-        unread={alerts}
-        profileHref="/admin/settings"
-        notificationsHref="/admin/audit"
-        settingsHref="/admin/settings"
-      />
+      <div className="topbar-actions">
+        <TopbarUserCluster
+          name={user.name}
+          unread={alerts}
+          profileHref="/admin/settings"
+          notificationsHref="/admin/audit"
+          settingsHref="/admin/settings"
+        />
+      </div>
     </div>
   );
 }

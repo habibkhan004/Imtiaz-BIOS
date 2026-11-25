@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
+import { getService } from "../../lib/site-data";
 
 export function ContactForm() {
   const searchParams = useSearchParams();
@@ -12,11 +13,14 @@ export function ContactForm() {
   const [cEmail, setCEmail] = useState("");
   const [cModel, setCModel] = useState("");
   const [cMsg, setCMsg] = useState("");
+  const [serviceSlug, setServiceSlug] = useState("");
   const cMsgRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const model = searchParams.get("model") ?? sessionStorage.getItem("imtiaz-contact-model");
     const msg = sessionStorage.getItem("imtiaz-contact-msg");
+    const service = searchParams.get("service") || "";
+    setServiceSlug(service);
     if (model) {
       setCModel(model);
       sessionStorage.removeItem("imtiaz-contact-model");
@@ -25,6 +29,16 @@ export function ContactForm() {
     if (msg) {
       setCMsg(msg);
       sessionStorage.removeItem("imtiaz-contact-msg");
+      setTimeout(() => cMsgRef.current?.focus(), 200);
+    }
+    if (service && !msg) {
+      const svc = getService(service);
+      const label = svc?.title ?? service;
+      setCMsg((prev) =>
+        prev.trim()
+          ? prev
+          : `I'd like to request the "${label}" service. Board/details: `,
+      );
       setTimeout(() => cMsgRef.current?.focus(), 200);
     }
   }, [searchParams]);
@@ -38,6 +52,11 @@ export function ContactForm() {
       return;
     }
     setPending(true);
+    const svc = serviceSlug ? getService(serviceSlug) : undefined;
+    const subjectParts = [
+      svc ? `Service: ${svc.title}` : null,
+      cModel.trim() ? `Board ${cModel.trim()}` : null,
+    ].filter(Boolean);
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
@@ -46,7 +65,7 @@ export function ContactForm() {
         body: JSON.stringify({
           name: cName.trim(),
           email: cEmail.trim(),
-          subject: cModel.trim() ? `Board ${cModel.trim()}` : "Contact",
+          subject: subjectParts.length ? subjectParts.join(" · ") : "Contact",
           message: cModel.trim()
             ? `Board/model: ${cModel.trim()}\n\n${cMsg.trim()}`
             : cMsg.trim(),

@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logoutEverywhere, readAuth, type AuthSession } from "../lib/auth";
+import { CART_EVENT, cartCount } from "../lib/cart";
+import { SERVICES } from "../lib/site-data";
+import { useTheme } from "../lib/theme";
+import { BrandLogo } from "./BrandLogo";
 import { LogoutIcon, TopbarUserCluster } from "./TopbarUserCluster";
 
 const NAV = [
   { href: "/", label: "Home" },
-  { href: "/services", label: "Services" },
-  { href: "/library", label: "Library" },
+  { href: "/library", label: "Files" },
   { href: "/categories", label: "Categories" },
   { href: "/faq", label: "FAQ" },
   { href: "/contact", label: "Contact" },
@@ -51,24 +54,37 @@ function roleLinks(user: AuthSession) {
 
 export function Header() {
   const [navOpen, setNavOpen] = useState(false);
+  const [servicesOpen, setServicesOpen] = useState(false);
   const [user, setUser] = useState<AuthSession | null>(null);
+  const [count, setCount] = useState(0);
   const pathname = usePathname();
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
+  const servicesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const sync = () => setUser(readAuth());
+    const sync = () => {
+      const auth = readAuth();
+      setUser(auth);
+      setCount(cartCount(auth?.userId));
+    };
     sync();
     window.addEventListener("imtiaz-auth-change", sync);
     window.addEventListener("storage", sync);
+    window.addEventListener(CART_EVENT, sync);
     return () => {
       window.removeEventListener("imtiaz-auth-change", sync);
       window.removeEventListener("storage", sync);
+      window.removeEventListener(CART_EVENT, sync);
     };
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setNavOpen(false);
+      if (e.key === "Escape") {
+        setNavOpen(false);
+        setServicesOpen(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -76,10 +92,31 @@ export function Header() {
 
   useEffect(() => {
     setNavOpen(false);
+    setServicesOpen(false);
   }, [pathname]);
 
-  const closeNav = () => setNavOpen(false);
+  useEffect(() => {
+    document.body.classList.toggle("nav-open", navOpen);
+    return () => document.body.classList.remove("nav-open");
+  }, [navOpen]);
+
+  useEffect(() => {
+    if (!servicesOpen) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!servicesRef.current?.contains(e.target as Node)) {
+        setServicesOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [servicesOpen]);
+
+  const closeNav = () => {
+    setNavOpen(false);
+    setServicesOpen(false);
+  };
   const links = user ? roleLinks(user) : null;
+  const servicesActive = isActive(pathname, "/services");
 
   const onLogout = async () => {
     await logoutEverywhere();
@@ -90,38 +127,71 @@ export function Header() {
   return (
     <header>
       <nav className="site-nav">
-        <Link href="/" className="logo nav-brand" onClick={closeNav}>
-          <svg className="logo-mark" viewBox="0 0 34 34" fill="none">
-            <rect
-              x="8"
-              y="8"
-              width="18"
-              height="18"
-              rx="3"
-              stroke="url(#logoGrad)"
-              strokeWidth="2"
-            />
-            <rect x="13" y="13" width="8" height="8" rx="2" fill="url(#logoGrad)" />
-            <path
-              d="M12 2V8M17 2V8M22 2V8M12 26V32M17 26V32M22 26V32M2 12H8M2 17H8M2 22H8M26 12H32M26 17H32M26 22H32"
-              stroke="#4a6a8a"
-              strokeWidth="1.4"
-            />
-            <defs>
-              <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#00d4ff" />
-                <stop offset="100%" stopColor="#0099cc" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <span>
-            <span className="logo-text">IMTIAZ BIOS</span>
-            <small>Advanced Repair Lab</small>
-          </span>
-        </Link>
+        <BrandLogo
+          href="/"
+          className="logo nav-brand"
+          subtitle="Advanced Repair Lab"
+          gradId="headerLogoGrad"
+          onClick={closeNav}
+        />
 
         <div className={`nav-links${navOpen ? " open" : ""}`} id="navLinks">
-          {NAV.map((item) => (
+          <Link
+            href="/"
+            onClick={closeNav}
+            style={
+              isActive(pathname, "/")
+                ? { color: "var(--accent-cyan)" }
+                : undefined
+            }
+          >
+            Home
+          </Link>
+
+          <div
+            className={`nav-dropdown${servicesOpen ? " open" : ""}`}
+            ref={servicesRef}
+          >
+            <button
+              type="button"
+              className="nav-dropdown-trigger"
+              aria-expanded={servicesOpen}
+              aria-haspopup="true"
+              style={servicesActive ? { color: "var(--accent-cyan)" } : undefined}
+              onClick={() => setServicesOpen((o) => !o)}
+            >
+              Services
+              <span className="nav-dropdown-caret" aria-hidden>
+                ▾
+              </span>
+            </button>
+            <div className="nav-dropdown-menu" role="menu">
+              {SERVICES.map((s) => (
+                <Link
+                  key={s.slug}
+                  href={`/services/${s.slug}`}
+                  role="menuitem"
+                  onClick={closeNav}
+                  className={
+                    pathname === `/services/${s.slug}` ? "is-active" : undefined
+                  }
+                >
+                  <span aria-hidden>{s.icon}</span>
+                  {s.title}
+                </Link>
+              ))}
+              <Link
+                href="/services"
+                role="menuitem"
+                className="nav-dropdown-all"
+                onClick={closeNav}
+              >
+                View all services →
+              </Link>
+            </div>
+          </div>
+
+          {NAV.filter((item) => item.href !== "/").map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -140,20 +210,37 @@ export function Header() {
               {links.consoleLabel}
             </Link>
           ) : null}
-          <a
-            href="https://t.me/IMTIAZBIOS1"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="telegram-link"
-            onClick={closeNav}
-          >
-            📨 Telegram
-          </a>
+          {user && links ? (
+            <div className="nav-account-panel">
+              <div className="nav-account-label">Account</div>
+              <TopbarUserCluster
+                name={user.name}
+                profileHref={links.profileHref}
+                notificationsHref={links.notificationsHref}
+                settingsHref={links.settingsHref}
+                showLogout
+                onNavigate={closeNav}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="nav-cta">
+          <button
+            type="button"
+            className="theme-toggle"
+            aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            title={theme === "light" ? "Dark mode" : "Light mode"}
+            onClick={toggleTheme}
+          >
+            {theme === "light" ? "☾" : "☀"}
+          </button>
+          <Link href="/cart" className="nav-cart-link" onClick={closeNav} aria-label="Cart">
+            Cart
+            {count > 0 ? <span className="nav-cart-badge">{count}</span> : null}
+          </Link>
           {user && links ? (
-            <>
+            <div className="nav-cta-account">
               <TopbarUserCluster
                 name={user.name}
                 profileHref={links.profileHref}
@@ -161,14 +248,24 @@ export function Header() {
                 settingsHref={links.settingsHref}
                 showLogout={false}
               />
-              <button type="button" className="logout-btn site-header-logout" onClick={onLogout}>
+              <button
+                type="button"
+                className="logout-btn site-header-logout"
+                onClick={onLogout}
+                aria-label="Logout"
+                title="Logout"
+              >
                 <LogoutIcon />
-                Logout
+                <span className="logout-btn-label">Logout</span>
               </button>
-            </>
+            </div>
           ) : (
             <>
-              <Link href="/library" className="btn btn-outline btn-sm" onClick={closeNav}>
+              <Link
+                href="/library"
+                className="btn btn-outline btn-sm nav-browse-btn"
+                onClick={closeNav}
+              >
                 Browse
               </Link>
               <Link href="/login" className="btn btn-primary btn-sm" onClick={closeNav}>
